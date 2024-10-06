@@ -1,3 +1,5 @@
+from dis import dis
+from threading import local
 import tomllib
 import itertools
 import pandas as pd
@@ -17,6 +19,7 @@ if __name__ == "__main__":
     eligible_people = local_config["eligible_people"]
     message_template = local_config["message"]
     emails = local_config["emails"]
+    manual_disallows = local_config["manual_disallows"]
 
     print("Validating config")
     assert len(set(eligible_people)) == len(
@@ -135,6 +138,17 @@ if __name__ == "__main__":
         idx1 = people_signed_up.index(person1)
         idx2 = people_signed_up.index(person2)
         constraints.append(gifts[idx1, idx2] + gifts[idx2, idx1] <= 1)
+
+    # Add any manual blocks (e.g. new person doesn't get other outlaws)
+    for person, disallow_list in manual_disallows.items():
+        if person not in people_signed_up:
+            pass
+        else:
+            person_idx = people_signed_up.index(person)
+            for p2 in [p for p in disallow_list if p in people_signed_up]:
+                p2_idx = people_signed_up.index(p2)
+                constraints.append(gifts[person_idx, p2_idx] == 0)
+
 
     ### Create the integer programming problem
     problem = cp.Problem(objective, constraints)
