@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "cvxpy>=1.5.3",
+    "pandas>=2.2.3",
+    "duckdb>=1.1.1",
+]
 
 [build-system]
 requires = ["hatchling"]
