@@ -5,12 +5,10 @@ import duckdb
 import numpy as np
 import cvxpy as cp
 
-if __name__ == 'main':
-    
+if __name__ == "main":
     print("Reading in config")
     with open("local_config.toml", "rb") as file:
         local_config = tomllib.load(file)
-
 
     seed = local_config["seed"]
     couples = local_config["couples"]
@@ -18,15 +16,23 @@ if __name__ == 'main':
     eligible_people = local_config["eligible_people"]
 
     print("Validating config")
-    assert len(set(eligible_people)) == len(eligible_people), "eligible people contains duplicates"
+    assert len(set(eligible_people)) == len(
+        eligible_people
+    ), "eligible people contains duplicates"
 
     people_in_couples = list(itertools.chain(*couples))
-    assert len(set(people_in_couples)) == len(people_in_couples), "Couples contains duplicates"
+    assert len(set(people_in_couples)) == len(
+        people_in_couples
+    ), "Couples contains duplicates"
     assert set(people_in_couples).issubset(set(eligible_people))
 
     people_in_families = list(itertools.chain(*families))
-    assert len(set(people_in_families)) == len(people_in_families), "Couples contains duplicates"
-    assert set(people_in_families) == set(eligible_people), f"Not everyone assigned a family"
+    assert len(set(people_in_families)) == len(
+        people_in_families
+    ), "Couples contains duplicates"
+    assert set(people_in_families) == set(
+        eligible_people
+    ), f"Not everyone assigned a family"
 
     assert seed >= 0
     assert isinstance(seed, int)
@@ -44,7 +50,9 @@ if __name__ == 'main':
     where is_secret_santa
     """
     signups = duckdb.sql(query).df()
-    assert set(signups["person"]).issubset(eligible_people), "People signed up aren't eligible"
+    assert set(signups["person"]).issubset(
+        eligible_people
+    ), "People signed up aren't eligible"
     assert signups["person"].is_unique
 
     # Get the people signed up this year
@@ -61,16 +69,15 @@ if __name__ == 'main':
     ### Objective. Maximize novelty
     objective = cp.Maximize(cp.sum(cp.multiply(gifts, novelty)))
 
-
     ### Constraints
     constraints = []
     # Can't give to yourself
     for i, person in enumerate(people_signed_up):
-        constraints.append(gifts[i,i] == 0)
+        constraints.append(gifts[i, i] == 0)
 
     # Each person gives 2 gifts and receives 2 gifts
-    constraints.append(cp.sum(gifts, axis=0) == np.full(n_people,2))
-    constraints.append(cp.sum(gifts, axis=1) == np.full(n_people,2))
+    constraints.append(cp.sum(gifts, axis=0) == np.full(n_people, 2))
+    constraints.append(cp.sum(gifts, axis=1) == np.full(n_people, 2))
 
     # No repeats of last year
     for row in ly_gifts.iterrows():
@@ -78,9 +85,15 @@ if __name__ == 'main':
         receiver1 = row[1]["gift1"]
         receiver2 = row[1]["gift2"]
 
-        giver_idx = people_signed_up.index(gifter) if gifter in people_signed_up else None
-        gift1_idx = people_signed_up.index(receiver1) if receiver1 in people_signed_up else None
-        gift2_idx = people_signed_up.index(receiver2) if receiver2 in people_signed_up else None
+        giver_idx = (
+            people_signed_up.index(gifter) if gifter in people_signed_up else None
+        )
+        gift1_idx = (
+            people_signed_up.index(receiver1) if receiver1 in people_signed_up else None
+        )
+        gift2_idx = (
+            people_signed_up.index(receiver2) if receiver2 in people_signed_up else None
+        )
 
         if giver_idx is not None and gift1_idx is not None:
             constraints.append(gifts[giver_idx, gift1_idx] == 0)
@@ -97,7 +110,11 @@ if __name__ == 'main':
 
     # No person can give 2 gifts within their family or receive 2 gifts within their family
     for family in families:
-        family_idx = [people_signed_up.index(person) for person in family if person in people_signed_up]
+        family_idx = [
+            people_signed_up.index(person)
+            for person in family
+            if person in people_signed_up
+        ]
         for person in set(family).intersection(set(people_signed_up)):
             idx = people_signed_up.index(person)
             constraints.append(cp.sum(gifts[idx, family_idx]) <= 0)
@@ -133,7 +150,10 @@ if __name__ == 'main':
     giver.append(person)
     gift1.append(receivers[0])
     gift2.append(receivers[1])
-    result = pd.DataFrame({"giver":giver, "gift1":gift1, "gift2":gift2}).merge(ly_gifts.rename(columns={"gift1":"gift1_ly", "gift2": "gift2_ly", "person":"giver"}),
-            on="giver",
-            validate="1:1"
-            )
+    result = pd.DataFrame({"giver": giver, "gift1": gift1, "gift2": gift2}).merge(
+        ly_gifts.rename(
+            columns={"gift1": "gift1_ly", "gift2": "gift2_ly", "person": "giver"}
+        ),
+        on="giver",
+        validate="1:1",
+    )
