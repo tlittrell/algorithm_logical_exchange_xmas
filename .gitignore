@@ -1,0 +1,4 @@
+*.csv
+local_config.toml
+*.ipynb
+data/output/secret_santa_messages.md
