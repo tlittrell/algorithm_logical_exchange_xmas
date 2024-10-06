@@ -14,6 +14,7 @@ if __name__ == "__main__":
     couples = local_config["couples"]
     families = local_config["families"]
     eligible_people = local_config["eligible_people"]
+    message_template = local_config["message"]
 
     print("Validating config")
     assert len(set(eligible_people)) == len(
@@ -159,3 +160,4 @@ if __name__ == "__main__":
     )
     print("Writing out results")
     result.to_csv("data/output/assignments.csv", index=False)
+
