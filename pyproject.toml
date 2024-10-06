@@ -8,6 +8,7 @@ dependencies = [
     "cvxpy>=1.5.3",
     "pandas>=2.2.3",
     "duckdb>=1.1.1",
+    "jupyterlab>=4.2.5",
 ]
 
 [build-system]

@@ -1,2 +1,3 @@
 *.csv
 local_config.toml
+*.ipynb
