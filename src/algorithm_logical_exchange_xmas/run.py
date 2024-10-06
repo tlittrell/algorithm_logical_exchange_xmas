@@ -4,6 +4,7 @@ import pandas as pd
 import duckdb
 import numpy as np
 import cvxpy as cp
+from collections import Counter
 
 if __name__ == "__main__":
     print("Reading in config")
@@ -156,8 +157,16 @@ if __name__ == "__main__":
             columns={"gift1": "gift1_ly", "gift2": "gift2_ly", "person": "giver"}
         ),
         on="giver",
+        how="left",
         validate="1:1",
     )
+    assert len(result) == len(people_signed_up)
+    assert result[["giver", "gift1", "gift2"]].notnull().any().all()
+    assert result["giver"].is_unique
+    all_assignment_list = list(itertools.chain(*[result["gift1"].to_list(), result["gift2"].to_list()]))
+    assert all([i == 2 for i in Counter(all_assignment_list).values()]), "not every person appears exactly twice in assignments"
+    assert set(all_assignment_list) == set(people_signed_up), "not everyone signed up gets gifts"
+
     print("Writing out results")
     result.to_csv("data/output/assignments.csv", index=False)
 
