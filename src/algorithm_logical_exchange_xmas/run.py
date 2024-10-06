@@ -16,6 +16,7 @@ if __name__ == "__main__":
     families = local_config["families"]
     eligible_people = local_config["eligible_people"]
     message_template = local_config["message"]
+    emails = local_config["emails"]
 
     print("Validating config")
     assert len(set(eligible_people)) == len(
@@ -105,7 +106,6 @@ if __name__ == "__main__":
     # Constraints for couples
     for person1, person2 in couples:
         if person1 in people_signed_up and person2 in people_signed_up:
-
             # Couples can't give to each other
             idx1 = people_signed_up.index(person1)
             idx2 = people_signed_up.index(person2)
@@ -113,7 +113,9 @@ if __name__ == "__main__":
             constraints.append(gifts[idx2, idx1] == 0)
 
             # Couples can't give to the same people because that's not fun
-            constraints.append(cp.sum(gifts[[idx1, idx2],:], axis=0) <= np.full(n_people, 1))
+            constraints.append(
+                cp.sum(gifts[[idx1, idx2], :], axis=0) <= np.full(n_people, 1)
+            )
 
     # No person can give 2 gifts within their family or receive 2 gifts within their family
     for family in families:
@@ -189,7 +191,9 @@ if __name__ == "__main__":
         )
 
         # Create a markdown section with a heading for the giver
-        markdown_message = f"# {row['giver']}\n\n{message}\n"
+        markdown_message = (
+            f"# {row['giver']}\n\nemail: {emails[row['giver']]}\n\n{message}\n"
+        )
 
         # Append the message to the markdown output list
         markdown_output.append(markdown_message)
