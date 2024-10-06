@@ -161,3 +161,18 @@ if __name__ == "__main__":
     print("Writing out results")
     result.to_csv("data/output/assignments.csv", index=False)
 
+    print("Writing messages")
+    markdown_output = []
+    for _, row in result.iterrows():
+        message = message_template.format(giver=row['giver'], gift1=row['gift1'], gift2=row['gift2'])
+        
+        # Create a markdown section with a heading for the giver
+        markdown_message = f"# {row['giver']}\n\n{message}\n"
+        
+        # Append the message to the markdown output list
+        markdown_output.append(markdown_message)
+
+    markdown_output = "\n".join(markdown_output)
+    with open("data/output/secret_santa_messages.md", "w") as file:
+        file.write(markdown_output)
+    print("Done")
