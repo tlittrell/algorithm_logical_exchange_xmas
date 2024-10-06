@@ -119,8 +119,8 @@ if __name__ == "__main__":
         ]
         for person in set(family).intersection(set(people_signed_up)):
             idx = people_signed_up.index(person)
-            constraints.append(cp.sum(gifts[idx, family_idx]) <= 0)
-            constraints.append(cp.sum(gifts[family_idx, idx]) <= 0)
+            constraints.append(cp.sum(gifts[idx, family_idx]) <= 1)
+            constraints.append(cp.sum(gifts[family_idx, idx]) <= 1)
 
     # No cycles e.g. if person 1 gives to person 2 then person 2 can't
     # give to person 1
