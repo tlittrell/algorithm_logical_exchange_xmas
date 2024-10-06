@@ -147,9 +147,9 @@ if __name__ == "__main__":
     gift2 = []
     for i, person in enumerate(people_signed_up):
         receivers = [people_signed_up[j] for j in np.where(gifts.value[i] == 1)[0]]
-    giver.append(person)
-    gift1.append(receivers[0])
-    gift2.append(receivers[1])
+        giver.append(person)
+        gift1.append(receivers[0])
+        gift2.append(receivers[1])
     result = pd.DataFrame({"giver": giver, "gift1": gift1, "gift2": gift2}).merge(
         ly_gifts.rename(
             columns={"gift1": "gift1_ly", "gift2": "gift2_ly", "person": "giver"}
