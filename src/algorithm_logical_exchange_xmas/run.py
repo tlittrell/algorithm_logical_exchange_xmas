@@ -5,7 +5,7 @@ import duckdb
 import numpy as np
 import cvxpy as cp
 
-if __name__ == "main":
+if __name__ == "__main__":
     print("Reading in config")
     with open("local_config.toml", "rb") as file:
         local_config = tomllib.load(file)
@@ -157,3 +157,5 @@ if __name__ == "main":
         on="giver",
         validate="1:1",
     )
+    print("Writing out results")
+    result.to_csv("data/output/assignments.csv", index=False)
