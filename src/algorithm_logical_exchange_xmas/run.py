@@ -180,14 +180,16 @@ if __name__ == "__main__":
         people_signed_up
     ), "not everyone signed up gets gifts"
     assert (
-        duckdb.sql("""
-    select
-        gift1 not ilike gift1_ly as test1,
-        gift1 not ilike gift2_ly as test2,
-        gift2 not ilike gift1_ly as test3,
-        gift2 not ilike gift2_ly as test4,
-    from result
-    """)
+        duckdb.sql(
+            """
+            select
+                gift1 not ilike gift1_ly as test1,
+                gift1 not ilike gift2_ly as test2,
+                gift2 not ilike gift1_ly as test3,
+                gift2 not ilike gift2_ly as test4,
+            from result
+            """
+        )
         .df()
         .all()
         .all()
