@@ -2,7 +2,8 @@ import tomllib
 import itertools
 import pandas as pd
 import duckdb
-
+import numpy as np
+import cvxpy as cp
 
 if __name__ == 'main':
     
@@ -30,7 +31,12 @@ if __name__ == 'main':
     assert seed >= 0
     assert isinstance(seed, int)
 
-    print("Reading in signups")
+    print("Reading in last year gifts")
+    ly_gifts = pd.read_csv("data/input/ly_gifts.csv")
+    assert ly_gifts["gifter"].is_unique
+    assert set(ly_gifts["gifter"]).issubset(eligible_people), "Ineligible LY gifter"
+
+    print("Reading in this year's signups")
     query = """
     select
         *
@@ -40,3 +46,11 @@ if __name__ == 'main':
     signups = duckdb.sql(query).df()
     assert set(signups["person"]).issubset(eligible_people), "People signed up aren't eligible"
     assert signups["person"].is_unique
+
+    # Get the people signed up this year
+    people = signups["person"].to_list()
+    n_people = len(people)
+
+    np.random.seed(seed)
+    # Set up novelty matrix
+    novelty = np.random.random((n_people, n_people))
