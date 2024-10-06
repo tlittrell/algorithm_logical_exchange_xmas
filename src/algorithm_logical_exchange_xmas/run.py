@@ -163,9 +163,15 @@ if __name__ == "__main__":
     assert len(result) == len(people_signed_up)
     assert result[["giver", "gift1", "gift2"]].notnull().any().all()
     assert result["giver"].is_unique
-    all_assignment_list = list(itertools.chain(*[result["gift1"].to_list(), result["gift2"].to_list()]))
-    assert all([i == 2 for i in Counter(all_assignment_list).values()]), "not every person appears exactly twice in assignments"
-    assert set(all_assignment_list) == set(people_signed_up), "not everyone signed up gets gifts"
+    all_assignment_list = list(
+        itertools.chain(*[result["gift1"].to_list(), result["gift2"].to_list()])
+    )
+    assert all(
+        [i == 2 for i in Counter(all_assignment_list).values()]
+    ), "not every person appears exactly twice in assignments"
+    assert set(all_assignment_list) == set(
+        people_signed_up
+    ), "not everyone signed up gets gifts"
 
     print("Writing out results")
     result.to_csv("data/output/assignments.csv", index=False)
@@ -173,11 +179,13 @@ if __name__ == "__main__":
     print("Writing messages")
     markdown_output = []
     for _, row in result.iterrows():
-        message = message_template.format(giver=row['giver'], gift1=row['gift1'], gift2=row['gift2'])
-        
+        message = message_template.format(
+            giver=row["giver"], gift1=row["gift1"], gift2=row["gift2"]
+        )
+
         # Create a markdown section with a heading for the giver
         markdown_message = f"# {row['giver']}\n\n{message}\n"
-        
+
         # Append the message to the markdown output list
         markdown_output.append(markdown_message)
 
