@@ -179,6 +179,19 @@ if __name__ == "__main__":
     assert set(all_assignment_list) == set(
         people_signed_up
     ), "not everyone signed up gets gifts"
+    assert (
+        duckdb.sql("""
+    select
+        gift1 not ilike gift1_ly as test1,
+        gift1 not ilike gift2_ly as test2,
+        gift2 not ilike gift1_ly as test3,
+        gift2 not ilike gift2_ly as test4,
+    from out_df
+    """)
+        .df()
+        .all()
+        .all()
+    ), "repeat gift detected"
 
     print("Writing out results")
     result.to_csv("data/output/assignments.csv", index=False)
