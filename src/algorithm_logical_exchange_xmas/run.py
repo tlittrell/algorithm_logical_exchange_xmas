@@ -102,13 +102,18 @@ if __name__ == "__main__":
         if giver_idx is not None and gift2_idx is not None:
             constraints.append(gifts[giver_idx, gift2_idx] == 0)
 
-    # Couples can't give to each other
+    # Constraints for couples
     for person1, person2 in couples:
         if person1 in people_signed_up and person2 in people_signed_up:
+
+            # Couples can't give to each other
             idx1 = people_signed_up.index(person1)
             idx2 = people_signed_up.index(person2)
             constraints.append(gifts[idx1, idx2] == 0)
             constraints.append(gifts[idx2, idx1] == 0)
+
+            # Couples can't give to the same people because that's not fun
+            constraints.append(cp.sum(gifts[[idx1, idx2],:], axis=0) <= np.full(n_people, 1))
 
     # No person can give 2 gifts within their family or receive 2 gifts within their family
     for family in families:
@@ -142,7 +147,7 @@ if __name__ == "__main__":
         print(gifts.value)
         print("Optimal objective value =", problem.value)
     else:
-        print("No optimal solution found")
+        raise ValueError("No optimal solution found")
 
     giver = []
     gift1 = []
