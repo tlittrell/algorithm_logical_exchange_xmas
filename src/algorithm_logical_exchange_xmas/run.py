@@ -186,7 +186,7 @@ if __name__ == "__main__":
         gift1 not ilike gift2_ly as test2,
         gift2 not ilike gift1_ly as test3,
         gift2 not ilike gift2_ly as test4,
-    from out_df
+    from result
     """)
         .df()
         .all()
