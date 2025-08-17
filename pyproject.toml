@@ -15,3 +15,109 @@ dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "A",    # flake8-builtins
+    "ARG",  # flake8-unused-arguments
+    "B",    # flake8-bugbear
+    "BLE",  # flake8-blind-except
+    "C4",   # flake8-comprehensions
+    "C90",  # mccabe
+    "COM",  # flake8-commas
+    "D",    # pydocstyle
+    "DTZ",  # flake8-datetimez
+    "E",    # pycodestyle errors
+    "EM",   # flake8-errmsg
+    "ERA",  # eradicate
+    "EXE",  # flake8-executable
+    "F",    # Pyflakes
+    "FA",   # flake8-future-annotations
+    "FBT",  # flake8-boolean-trap
+    "FLY",  # flynt
+    "G",    # flake8-logging-format
+    "I",    # isort
+    "ICN",  # flake8-import-conventions
+    "INP",  # flake8-no-pep420
+    "INT",  # flake8-gettext
+    "ISC",  # flake8-implicit-str-concat
+    "LOG",  # flake8-logging
+    "N",    # pep8-naming
+    "NPY",  # NumPy-specific rules
+    "PD",   # pandas-vet
+    "PERF", # Perflint
+    "PGH",  # pygrep-hooks
+    "PIE",  # flake8-pie
+    "PL",   # Pylint
+    "PT",   # flake8-pytest-style
+    "PTH",  # flake8-use-pathlib
+    "PYI",  # flake8-pyi
+    "Q",    # flake8-quotes
+    "RET",  # flake8-return
+    "RSE",  # flake8-raise
+    "RUF",  # Ruff-specific rules
+    "S",    # flake8-bandit
+    "SIM",  # flake8-simplify
+    "SLF",  # flake8-self
+    "SLOT", # flake8-slots
+    "T10",  # flake8-debugger
+    "T20",  # flake8-print
+    "TCH",  # flake8-type-checking
+    "TID",  # flake8-tidy-imports
+    "TRY",  # tryceratops
+    "UP",   # pyupgrade
+    "W",    # pycodestyle warnings
+    "YTT",  # flake8-2020
+]
+ignore = [
+    "D100",   # Missing docstring in public module
+    "D101",   # Missing docstring in public class
+    "D102",   # Missing docstring in public method
+    "D103",   # Missing docstring in public function
+    "D104",   # Missing docstring in public package
+    "D105",   # Missing docstring in magic method
+    "D107",   # Missing docstring in __init__
+    "COM812", # Trailing comma missing (conflicts with formatter)
+    "ISC001", # Implicitly concatenated string literals (conflicts with formatter)
+    "S101",   # Allow assert statements for data validation in this project
+]
+
+[tool.ruff.lint.per-file-ignores]
+"test_*.py" = ["S101", "D", "PLR2004"]  # Allow assert, missing docstrings, magic values in tests
+"tests/*.py" = ["S101", "D", "PLR2004"]
+"**/test_*.py" = ["S101", "D", "PLR2004"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 7
+max-branches = 12
+max-returns = 6
+max-statements = 50
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.uv]
+dev-dependencies = [
+    "pre-commit>=4.3.0",
+    "mypy>=1.17.1",
+    "black>=25.1.0",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "detect-secrets>=1.5.0",
+    "tomli-w>=1.2.0",
+    "pandas-stubs>=2.3.0.250703",
+    "bandit>=1.8.6",
+]
