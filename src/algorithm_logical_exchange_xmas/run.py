@@ -21,6 +21,7 @@ if __name__ == "__main__":
     emails = local_config["emails"]
     manual_disallows = local_config["manual_disallows"]
 
+
     print("Validating config")
     assert len(set(eligible_people)) == len(
         eligible_people
