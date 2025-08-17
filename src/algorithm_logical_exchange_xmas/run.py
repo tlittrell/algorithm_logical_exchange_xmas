@@ -49,21 +49,19 @@ def validate_config(config: dict[str, Any]) -> None:
     assert isinstance(seed, int)
 
 
-def load_data(eligible_people: list[str]) -> tuple[pd.DataFrame, list[str]]:
+def load_data(
+    eligible_people: list[str],
+    ly_gifts_path: Path = Path("data/input/ly_gifts.csv"),
+    ty_signup_path: Path = Path("data/input/ty_signup.csv"),
+) -> tuple[pd.DataFrame, list[str]]:
     """Load last year's gifts and this year's signups."""
     logging.info("Reading in last year gifts")
-    ly_gifts = pd.read_csv("data/input/ly_gifts.csv")
+    ly_gifts = pd.read_csv(ly_gifts_path)
     assert ly_gifts["giver"].is_unique
     assert set(ly_gifts["giver"]).issubset(eligible_people), "Ineligible LY gifter"
 
     logging.info("Reading in this year's signups")
-    query = """
-    select
-        *
-    from read_csv('data/input/ty_signup.csv')
-    where is_secret_santa
-    """
-    signups = duckdb.sql(query).df()
+    signups = duckdb.read_csv(str(ty_signup_path)).filter("is_secret_santa").df()
     assert set(signups["person"]).issubset(eligible_people), "People signed up aren't eligible"
     assert signups["person"].is_unique
 
@@ -81,8 +79,7 @@ def create_basic_constraints(
     n_people = len(people_signed_up)
 
     # Can't give to yourself
-    for i, _person in enumerate(people_signed_up):
-        constraints.append(gifts[i, i] == 0)
+    constraints.extend([gifts[i, i] == 0 for i in range(n_people)])
 
     # Each person gives and receives the configured number of gifts
     constraints.append(cp.sum(gifts, axis=0) == np.full(n_people, gifts_per_person))
@@ -293,10 +290,16 @@ def process_results(
     return result
 
 
-def generate_output(result: pd.DataFrame, message_template: str, emails: dict[str, str]) -> None:
+def generate_output(
+    result: pd.DataFrame,
+    message_template: str,
+    emails: dict[str, str],
+    assignments_path: Path = Path("data/output/assignments.csv"),
+    messages_path: Path = Path("data/output/secret_santa_messages.md"),
+) -> None:
     """Generate and save output files."""
     logging.info("Writing out results")
-    result.to_csv("data/output/assignments.csv", index=False)
+    result.to_csv(assignments_path, index=False)
 
     logging.info("Writing messages")
     markdown_output_list = []
@@ -311,7 +314,7 @@ def generate_output(result: pd.DataFrame, message_template: str, emails: dict[st
         markdown_output_list.append(markdown_message)
 
     markdown_output = "\n".join(markdown_output_list)
-    with Path("data/output/secret_santa_messages.md").open("w") as file:
+    with messages_path.open("w") as file:
         file.write(markdown_output)
     logging.info("Done")
 
@@ -339,7 +342,11 @@ def main() -> None:
     max_couple_overlap = algorithm_config["max_couple_overlap"]
 
     # Load data
-    ly_gifts, people_signed_up = load_data(eligible_people)
+    ly_gifts, people_signed_up = load_data(
+        eligible_people,
+        ly_gifts_path=Path("data/input/ly_gifts.csv"),
+        ty_signup_path=Path("data/input/ty_signup.csv"),
+    )
 
     # Solve optimization problem
     gifts = solve_optimization_problem(
@@ -359,7 +366,13 @@ def main() -> None:
     result = process_results(gifts, people_signed_up, ly_gifts, gifts_per_person)
 
     # Generate output
-    generate_output(result, message_template, emails)
+    generate_output(
+        result,
+        message_template,
+        emails,
+        assignments_path=Path("data/output/assignments.csv"),
+        messages_path=Path("data/output/secret_santa_messages.md"),
+    )
 
 
 if __name__ == "__main__":

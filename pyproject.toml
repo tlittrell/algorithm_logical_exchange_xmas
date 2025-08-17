@@ -117,4 +117,5 @@ dev-dependencies = [
     "pytest>=8.4.1",
     "pytest-cov>=6.2.1",
     "detect-secrets>=1.5.0",
+    "tomli-w>=1.2.0",
 ]
