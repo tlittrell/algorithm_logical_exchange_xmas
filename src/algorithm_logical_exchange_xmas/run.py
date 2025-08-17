@@ -1,3 +1,5 @@
+from dis import dis
+from threading import local
 import tomllib
 import itertools
 import pandas as pd
@@ -17,6 +19,8 @@ if __name__ == "__main__":
     eligible_people = local_config["eligible_people"]
     message_template = local_config["message"]
     emails = local_config["emails"]
+    manual_disallows = local_config["manual_disallows"]
+
 
     print("Validating config")
     assert len(set(eligible_people)) == len(
@@ -136,6 +140,17 @@ if __name__ == "__main__":
         idx2 = people_signed_up.index(person2)
         constraints.append(gifts[idx1, idx2] + gifts[idx2, idx1] <= 1)
 
+    # Add any manual blocks (e.g. new person doesn't get other outlaws)
+    for person, disallow_list in manual_disallows.items():
+        if person not in people_signed_up:
+            pass
+        else:
+            person_idx = people_signed_up.index(person)
+            for p2 in [p for p in disallow_list if p in people_signed_up]:
+                p2_idx = people_signed_up.index(p2)
+                constraints.append(gifts[person_idx, p2_idx] == 0)
+
+
     ### Create the integer programming problem
     problem = cp.Problem(objective, constraints)
 
@@ -179,6 +194,21 @@ if __name__ == "__main__":
     assert set(all_assignment_list) == set(
         people_signed_up
     ), "not everyone signed up gets gifts"
+    assert (
+        duckdb.sql(
+            """
+            select
+                gift1 not ilike gift1_ly as test1,
+                gift1 not ilike gift2_ly as test2,
+                gift2 not ilike gift1_ly as test3,
+                gift2 not ilike gift2_ly as test4,
+            from result
+            """
+        )
+        .df()
+        .all()
+        .all()
+    ), "repeat gift detected"
 
     print("Writing out results")
     result.to_csv("data/output/assignments.csv", index=False)
