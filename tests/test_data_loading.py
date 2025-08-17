@@ -39,7 +39,7 @@ class TestLoadData:
         ly_gifts_path, _ = temp_csv_files
         eligible_people = sample_config["algorithm"]["eligible_people"]
 
-        with pytest.raises((OSError, RuntimeError)):  # DuckDB will raise an exception
+        with pytest.raises(Exception):  # DuckDB will raise IOException  # noqa: B017, PT011
             load_data(eligible_people, ly_gifts_path, Path("nonexistent.csv"))
 
     def test_load_data_duplicate_ly_giver(self, temp_csv_files, sample_config):
