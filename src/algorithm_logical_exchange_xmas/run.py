@@ -239,31 +239,25 @@ def load_gift_preferences(
         return {}, {}
 
     # Validate all persons and gifts are eligible
-    assert set(all_preferences["person"]).issubset(
-        eligible_people
-    ), "Ineligible person in gift preferences"
-    assert set(all_preferences["gift"]).issubset(
-        eligible_people
-    ), "Ineligible gift recipient in gift preferences"
+    assert set(all_preferences["person"]).issubset(eligible_people), "Ineligible person in gift preferences"
+    assert set(all_preferences["gift"]).issubset(eligible_people), "Ineligible gift recipient in gift preferences"
 
     # Check for duplicate person-gift pairs within each preference type
     for pref_type in ["disallow", "assign"]:
         pref_subset = all_preferences[all_preferences["preference_type"] == pref_type]
-        assert not pref_subset.duplicated(subset=["person", "gift"]).any(), (
-            f"Duplicate person-gift pairs in {pref_type} preferences"
-        )
+        assert not pref_subset.duplicated(
+            subset=["person", "gift"]
+        ).any(), f"Duplicate person-gift pairs in {pref_type} preferences"
 
     # Check for conflicts: same person-gift pair in both disallow and assign
     disallow_prefs = all_preferences[all_preferences["preference_type"] == "disallow"]
     assign_prefs = all_preferences[all_preferences["preference_type"] == "assign"]
 
-    disallow_pairs = set(zip(disallow_prefs["person"], disallow_prefs["gift"], strict=False))
-    assign_pairs = set(zip(assign_prefs["person"], assign_prefs["gift"], strict=False))
+    disallow_pairs = set(zip(disallow_prefs["person"], disallow_prefs["gift"], strict=True))
+    assign_pairs = set(zip(assign_prefs["person"], assign_prefs["gift"], strict=True))
 
     conflicts = disallow_pairs & assign_pairs
-    assert len(conflicts) == 0, (
-        f"Conflicting preferences (both disallow and assign): {conflicts}"
-    )
+    assert len(conflicts) == 0, f"Conflicting preferences (both disallow and assign): {conflicts}"
 
     # Validate no person has more assigns than gifts_per_person
     assign_counts = assign_prefs["person"].value_counts()
@@ -741,10 +735,10 @@ def process_results(
 
         # Count gifts within this family
         family_gifts = 0
-        for giver in family_members_signed_up:
-            giver_idx = people_signed_up.index(giver)
-            for receiver in family_members_signed_up:
-                receiver_idx = people_signed_up.index(receiver)
+        for giver_person in family_members_signed_up:
+            giver_idx = people_signed_up.index(giver_person)
+            for receiver_person in family_members_signed_up:
+                receiver_idx = people_signed_up.index(receiver_person)
                 if gifts.value[giver_idx, receiver_idx] == 1:
                     family_gifts += 1
 
@@ -800,7 +794,7 @@ def generate_output(
     logging.info(f"Updating database with results for year {current_year}")
 
     # Read existing database
-    existing_db = duckdb.sql(f"SELECT * FROM read_csv_auto('{db_path}')").df()
+    existing_db = duckdb.sql(f"SELECT * FROM read_csv_auto('{db_path}')").df()  # noqa: S608  # nosec B608
 
     # Remove existing entries for current year (allows re-running)
     updated_db = existing_db[existing_db["year"] != current_year]
