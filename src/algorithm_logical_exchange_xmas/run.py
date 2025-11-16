@@ -168,7 +168,7 @@ def create_basic_constraints(
     of gifts, and no one can gift themselves.
 
     Args:
-        gifts: CVXPY boolean variable matrix (n×n) where gifts[i,j]=1 means
+        gifts: CVXPY boolean variable matrix (nxn) where gifts[i,j]=1 means
             person i gives to person j.
         people_signed_up: List of participant names (ordered, length n).
         gifts_per_person: Number of gifts each person should give and receive.
@@ -201,7 +201,7 @@ def create_last_year_constraints(
     maintaining novelty and preventing patterns.
 
     Args:
-        gifts: CVXPY boolean variable matrix (n×n) where gifts[i,j]=1 means
+        gifts: CVXPY boolean variable matrix (nxn) where gifts[i,j]=1 means
             person i gives to person j.
         people_signed_up: List of participant names currently signed up this year.
         ly_gifts: DataFrame with last year's assignments, containing columns:
@@ -240,7 +240,7 @@ def create_couple_constraints(
     partners can gift, ensuring variety in couple gift assignments.
 
     Args:
-        gifts: CVXPY boolean variable matrix (n×n) where gifts[i,j]=1 means
+        gifts: CVXPY boolean variable matrix (nxn) where gifts[i,j]=1 means
             person i gives to person j.
         people_signed_up: List of participant names currently signed up.
         couples: List of two-element lists, each containing partner names.
@@ -283,7 +283,7 @@ def create_family_constraints(
     and maintain variety in gift assignments.
 
     Args:
-        gifts: CVXPY boolean variable matrix (n×n) where gifts[i,j]=1 means
+        gifts: CVXPY boolean variable matrix (nxn) where gifts[i,j]=1 means
             person i gives to person j.
         people_signed_up: List of participant names currently signed up.
         families: List of lists, each containing names of family members.
@@ -316,13 +316,13 @@ def create_cycle_constraints(gifts: cp.Variable, people_signed_up: list[str]) ->
     gifts back to person A, ensuring more interesting gift patterns.
 
     Args:
-        gifts: CVXPY boolean variable matrix (n×n) where gifts[i,j]=1 means
+        gifts: CVXPY boolean variable matrix (nxn) where gifts[i,j]=1 means
             person i gives to person j.
         people_signed_up: List of participant names currently signed up.
 
     Returns:
         List of CVXPY constraints enforcing that for any pair (i,j),
-        at most one direction of gifting can occur: gifts[i,j] + gifts[j,i] ≤ 1.
+        at most one direction of gifting can occur: gifts[i,j] + gifts[j,i] <= 1.
     """
     constraints = []
 
@@ -344,7 +344,7 @@ def create_manual_disallow_constraints(
     specific gift assignments based on user-defined rules.
 
     Args:
-        gifts: CVXPY boolean variable matrix (n×n) where gifts[i,j]=1 means
+        gifts: CVXPY boolean variable matrix (nxn) where gifts[i,j]=1 means
             person i gives to person j.
         people_signed_up: List of participant names currently signed up.
         manual_disallows: Dictionary mapping giver names to lists of people
@@ -401,7 +401,7 @@ def solve_optimization_problem(  # noqa: PLR0913
         seed: Random seed for reproducible novelty matrix generation.
 
     Returns:
-        CVXPY Variable containing the optimal gift assignment matrix (n×n boolean),
+        CVXPY Variable containing the optimal gift assignment matrix (nxn boolean),
         where gifts.value[i,j]=1 means person i gives to person j.
 
     Raises:
@@ -473,7 +473,7 @@ def process_results(
     with giver-receiver pairs, and validates that all constraints are satisfied.
 
     Args:
-        gifts: CVXPY Variable with solved optimal assignment matrix (n×n boolean),
+        gifts: CVXPY Variable with solved optimal assignment matrix (nxn boolean),
             where gifts.value[i,j]=1 means person i gives to person j.
         people_signed_up: List of participant names (ordered, same as used in optimization).
         ly_gifts: DataFrame with last year's assignments for validation
