@@ -178,6 +178,80 @@ def load_data(
     return ly_gifts, people_signed_up
 
 
+def load_gift_preferences(
+    eligible_people: list[str],
+    current_year: int,
+    preferences_db_path: Path = Path("data/gift_preferences.csv"),
+) -> dict[str, list[str]]:
+    """Load gift preferences from database for current year.
+
+    Queries the gift preferences database for current year's 'disallow' preferences
+    and returns them in a dictionary format compatible with manual_disallows.
+
+    Args:
+        eligible_people: List of all people eligible to participate in Secret Santa.
+        current_year: The year for which preferences are being loaded.
+        preferences_db_path: Path to the gift preferences database CSV file containing
+            historical preference data. Must have columns: "person", "gift",
+            "preference_type", "year". Defaults to "data/gift_preferences.csv".
+
+    Returns:
+        Dictionary mapping person names to lists of people they cannot give to.
+        Empty dictionary if no preferences exist for the current year.
+
+    Raises:
+        AssertionError: If validation fails (e.g., ineligible person/gift or duplicate
+            person-gift pairs).
+        FileNotFoundError: If preferences database file doesn't exist.
+        KeyError: If required columns are missing from the file.
+        duckdb.Error: If database query fails.
+    """
+    logging.info(f"Reading gift preferences from database (year {current_year})")
+
+    # Check if file exists first - if not, return empty dict
+    if not preferences_db_path.exists():
+        logging.info("No gift preferences file found, returning empty preferences")
+        return {}
+
+    preferences = duckdb.sql(
+        """
+        SELECT person, gift
+        FROM read_csv_auto(?)
+        WHERE year = ? AND preference_type = 'disallow'
+        """,
+        params=[str(preferences_db_path), current_year],
+    ).df()
+
+    # If no preferences for this year, return empty dict
+    if len(preferences) == 0:
+        logging.info("No gift preferences found for current year")
+        return {}
+
+    # Validate all persons and gifts are eligible
+    assert set(preferences["person"]).issubset(
+        eligible_people
+    ), "Ineligible person in gift preferences"
+    assert set(preferences["gift"]).issubset(
+        eligible_people
+    ), "Ineligible gift recipient in gift preferences"
+
+    # Check for duplicate person-gift pairs
+    assert not preferences.duplicated(subset=["person", "gift"]).any(), (
+        "Duplicate person-gift pairs in preferences"
+    )
+
+    # Convert to dictionary format
+    manual_disallows: dict[str, list[str]] = {}
+    for _, row in preferences.iterrows():
+        person = row["person"]
+        gift = row["gift"]
+        if person not in manual_disallows:
+            manual_disallows[person] = []
+        manual_disallows[person].append(gift)
+
+    return manual_disallows
+
+
 def create_basic_constraints(
     gifts: cp.Variable, people_signed_up: list[str], gifts_per_person: int
 ) -> list[cp.Constraint]:
@@ -665,7 +739,6 @@ def main() -> None:
     seed = config["seed"]
     current_year = config["current_year"]
     emails = config["emails"]
-    manual_disallows = config["manual_disallows"]
 
     # Algorithm configuration
     algorithm_config = config["algorithm"]
@@ -683,6 +756,13 @@ def main() -> None:
         eligible_people,
         current_year,
         signups_db_path=Path("data/signups.csv"),
+    )
+
+    # Load gift preferences
+    manual_disallows = load_gift_preferences(
+        eligible_people,
+        current_year,
+        preferences_db_path=Path("data/gift_preferences.csv"),
     )
 
     # Solve optimization problem

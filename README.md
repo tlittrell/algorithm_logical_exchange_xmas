@@ -154,7 +154,27 @@ Frank,true,false,2025
 - `is_stockings`: Boolean indicating stockings participation (`true`/`false`)
 - `year`: Year of signup (integer)
 
-**Note:** Only participants with `is_secret_santa = true` for the current year will be included in the gift assignment algorithm. The `is_stockings` column is available for future features
+**Note:** Only participants with `is_secret_santa = true` for the current year will be included in the gift assignment algorithm. The `is_stockings` column is available for future features.
+
+### 3. Gift Preferences Database (`data/gift_preferences.csv`)
+
+A historical database containing gift preferences for all years. The algorithm queries this database for the current year's preferences to apply constraints on gift assignments.
+
+```csv
+person,gift,preference_type,year
+Ariel,Mark,disallow,2025
+Ariel,Thomas,disallow,2025
+Ariel,Graham,disallow,2025
+```
+
+**Required columns:**
+
+- `person`: Person who has the preference (the giver)
+- `gift`: Person who would receive the gift (the recipient)
+- `preference_type`: Type of preference (currently only `disallow` is supported)
+- `year`: Year the preference applies to (integer)
+
+**Note:** Only preferences with `preference_type = 'disallow'` for the current year will be applied. The preference type column is designed to support future enhancement with additional preference types (e.g., `prefer`, `require`). Each person-gift pair should only appear once per year.
 
 ## Usage
 
@@ -174,10 +194,11 @@ The algorithm will:
 
 1. Load and validate configuration from `local_config.toml`
 2. Query the database for previous year's assignments (year = `current_year - 1`)
-3. Read this year's signup data
-4. Build and solve the optimization problem with all constraints
-5. Update the database with new assignments for `current_year`
-6. Generate personalized messages in `data/output/`
+3. Read this year's signup data (participants with `is_secret_santa = true`)
+4. Load this year's gift preferences (with `preference_type = 'disallow'`)
+5. Build and solve the optimization problem with all constraints
+6. Update the database with new assignments for `current_year`
+7. Generate personalized messages in `data/output/`
 
 **Re-running the algorithm:** If you need to regenerate assignments for the same year (e.g., if constraints changed), simply run the algorithm again. It will automatically replace the existing entries for `current_year` in the database.
 

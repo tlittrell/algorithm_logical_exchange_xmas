@@ -18,7 +18,6 @@ def sample_config() -> dict[str, Any]:
             "Charlie": "charlie@example.com",
             "Diana": "diana@example.com",
         },
-        "manual_disallows": {"Alice": ["Bob"]},
         "algorithm": {
             "eligible_people": ["Alice", "Bob", "Charlie", "Diana"],
             "couples": [["Alice", "Bob"], ["Charlie", "Diana"]],
@@ -86,3 +85,24 @@ def temp_output_dir():
     with tempfile.TemporaryDirectory() as temp_dir:
         output_dir = Path(temp_dir)
         yield output_dir
+
+
+@pytest.fixture
+def sample_gift_preferences() -> pd.DataFrame:
+    """Sample gift preferences data."""
+    return pd.DataFrame(
+        {
+            "person": ["Alice", "Bob"],
+            "gift": ["Bob", "Alice"],
+            "preference_type": ["disallow", "disallow"],
+            "year": [2025, 2025],
+        }
+    )
+
+
+@pytest.fixture
+def temp_gift_preferences_file(sample_gift_preferences):
+    """Create a temporary gift preferences file for testing."""
+    prefs_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+    sample_gift_preferences.to_csv(prefs_file.name, index=False)
+    return Path(prefs_file.name)
