@@ -81,6 +81,7 @@ families = [
 # Family constraints
 max_gifts_to_family = 1   # Max gifts a person can give to their own family
 max_gifts_from_family = 1 # Max gifts a person can receive from their own family
+max_total_intra_family_gifts = 3  # Max total intra-family gifts across all families (optional)
 max_couple_overlap = 0    # Max people both members of a couple can gift
 
 # Message template for gift assignments
@@ -282,7 +283,9 @@ The algorithm uses **Constraint Programming** (specifically, integer programming
 4. **Couples**:
    - `X[i,j] = 0` if `i` and `j` are partners
    - Couples can't overlap gifts beyond `max_couple_overlap`
-5. **Family limits**: Each person gives/receives at most `max_gifts_to_family`/`max_gifts_from_family` within their family
+5. **Family limits**:
+   - Each person gives/receives at most `max_gifts_to_family`/`max_gifts_from_family` within their family
+   - Total intra-family gifts across all families ≤ `max_total_intra_family_gifts` (if specified)
 6. **Cycle prevention**: `X[i,j] + X[j,i] <= 1` (if A->B, then B cannot->A)
 7. **Manual disallows**: `X[i,j] = 0` for manually specified pairs
 

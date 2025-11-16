@@ -26,6 +26,7 @@ def sample_config() -> dict[str, Any]:
             "gifts_per_person": 2,
             "max_gifts_to_family": 1,
             "max_gifts_from_family": 1,
+            "max_total_intra_family_gifts": 3,
             "max_couple_overlap": 1,
         },
     }

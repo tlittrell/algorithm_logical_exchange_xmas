@@ -174,6 +174,51 @@ class TestFamilyConstraints:
         assert len(constraints) == 0
 
 
+class TestFamilyConstraintsGlobalLimit:
+    def test_create_family_constraints_with_global_limit(self):
+        """Test family constraints with global intra-family limit."""
+        people = ["Alice", "Bob", "Charlie", "Diana"]
+        gifts = cp.Variable((4, 4), boolean=True)
+        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
+        max_to_family = 1
+        max_from_family = 1
+        max_total_intra_family = 3  # Global limit
+
+        constraints = create_family_constraints(
+            gifts, people, families, max_to_family, max_from_family, max_total_intra_family
+        )
+
+        # Should have per-person constraints (4 people * 2 = 8) + 1 global constraint = 9
+        assert len(constraints) == 9
+
+    def test_create_family_constraints_without_global_limit(self):
+        """Test family constraints without global limit (backward compatibility)."""
+        people = ["Alice", "Bob", "Charlie", "Diana"]
+        gifts = cp.Variable((4, 4), boolean=True)
+        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
+        max_to_family = 1
+        max_from_family = 1
+
+        # Call without max_total_intra_family_gifts parameter
+        constraints = create_family_constraints(gifts, people, families, max_to_family, max_from_family)
+
+        # Should have only per-person constraints (4 people * 2 = 8)
+        assert len(constraints) == 8
+
+    def test_create_family_constraints_global_limit_none(self):
+        """Test that None for global limit is treated as no constraint."""
+        people = ["Alice", "Bob", "Charlie", "Diana"]
+        gifts = cp.Variable((4, 4), boolean=True)
+        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
+        max_to_family = 1
+        max_from_family = 1
+
+        constraints = create_family_constraints(gifts, people, families, max_to_family, max_from_family, None)
+
+        # Should have only per-person constraints (4 people * 2 = 8)
+        assert len(constraints) == 8
+
+
 class TestCycleConstraints:
     def test_create_cycle_constraints(self):
         """Test cycle constraints creation."""

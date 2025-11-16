@@ -112,6 +112,12 @@ def validate_config(config: dict[str, Any]) -> None:
     assert seed >= 0
     assert isinstance(seed, int)
 
+    # Validate max_total_intra_family_gifts if present
+    if "max_total_intra_family_gifts" in algorithm_config:
+        max_total = algorithm_config["max_total_intra_family_gifts"]
+        assert isinstance(max_total, int), "max_total_intra_family_gifts must be an integer"
+        assert max_total >= 0, "max_total_intra_family_gifts must be non-negative"
+
 
 def load_data(
     eligible_people: list[str],
@@ -404,6 +410,7 @@ def create_family_constraints(
     families: list[list[str]],
     max_gifts_to_family: int,
     max_gifts_from_family: int,
+    max_total_intra_family_gifts: int | None = None,
 ) -> list[cp.Constraint]:
     """Create constraints to limit gifts within families.
 
@@ -419,20 +426,33 @@ def create_family_constraints(
             own family members.
         max_gifts_from_family: Maximum number of gifts a person can receive from
             their own family members.
+        max_total_intra_family_gifts: Optional maximum total number of intra-family
+            gifts across all families. If None, no global constraint is applied.
 
     Returns:
         List of CVXPY constraints limiting within-family gift exchanges for
-        each participant based on the specified maximums.
+        each participant based on the specified maximums, plus optional global constraint.
     """
     constraints = []
 
-    # Limit gifts within families
+    # Per-person limits: gifts within families
     for family in families:
         family_idx = [people_signed_up.index(person) for person in family if person in people_signed_up]
         for person in set(family).intersection(set(people_signed_up)):
             idx = people_signed_up.index(person)
             constraints.append(cp.sum(gifts[idx, family_idx]) <= max_gifts_to_family)
             constraints.append(cp.sum(gifts[family_idx, idx]) <= max_gifts_from_family)
+
+    # Global constraint: total intra-family gifts across all families
+    if max_total_intra_family_gifts is not None:
+        total_intra_family = 0
+        for family in families:
+            family_idx = [people_signed_up.index(person) for person in family if person in people_signed_up]
+            # Sum all gifts where both giver and receiver are in this family
+            if len(family_idx) > 0:
+                total_intra_family += cp.sum(gifts[family_idx, :][:, family_idx])
+
+        constraints.append(total_intra_family <= max_total_intra_family_gifts)
 
     return constraints
 
@@ -542,6 +562,7 @@ def solve_optimization_problem(  # noqa: PLR0913
     max_gifts_to_family: int,
     max_gifts_from_family: int,
     max_couple_overlap: int,
+    max_total_intra_family_gifts: int | None,
     seed: int,
 ) -> cp.Variable:
     """Set up and solve the optimization problem.
@@ -562,6 +583,8 @@ def solve_optimization_problem(  # noqa: PLR0913
         max_gifts_to_family: Maximum gifts a person can give within their family.
         max_gifts_from_family: Maximum gifts a person can receive from their family.
         max_couple_overlap: Maximum people both partners in a couple can gift.
+        max_total_intra_family_gifts: Optional maximum total number of intra-family
+            gifts across all families. If None, no global constraint is applied.
         seed: Random seed for reproducible novelty matrix generation.
 
     Returns:
@@ -583,6 +606,7 @@ def solve_optimization_problem(  # noqa: PLR0913
         ...     max_gifts_to_family=0,
         ...     max_gifts_from_family=0,
         ...     max_couple_overlap=0,
+        ...     max_total_intra_family_gifts=None,
         ...     seed=42
         ... )
         >>> print(gifts.value)  # Optimal assignment matrix
@@ -606,7 +630,9 @@ def solve_optimization_problem(  # noqa: PLR0913
     constraints.extend(create_last_year_constraints(gifts, people_signed_up, ly_gifts))
     constraints.extend(create_couple_constraints(gifts, people_signed_up, couples, max_couple_overlap))
     constraints.extend(
-        create_family_constraints(gifts, people_signed_up, families, max_gifts_to_family, max_gifts_from_family)
+        create_family_constraints(
+            gifts, people_signed_up, families, max_gifts_to_family, max_gifts_from_family, max_total_intra_family_gifts
+        )
     )
     constraints.extend(create_cycle_constraints(gifts, people_signed_up))
     constraints.extend(create_manual_disallow_constraints(gifts, people_signed_up, manual_disallows))
@@ -855,6 +881,7 @@ def main() -> None:
     gifts_per_person = algorithm_config["gifts_per_person"]
     max_gifts_to_family = algorithm_config["max_gifts_to_family"]
     max_gifts_from_family = algorithm_config["max_gifts_from_family"]
+    max_total_intra_family_gifts = algorithm_config.get("max_total_intra_family_gifts")
     max_couple_overlap = algorithm_config["max_couple_overlap"]
 
     # Load data
@@ -884,6 +911,7 @@ def main() -> None:
         max_gifts_to_family,
         max_gifts_from_family,
         max_couple_overlap,
+        max_total_intra_family_gifts,
         seed,
     )
 

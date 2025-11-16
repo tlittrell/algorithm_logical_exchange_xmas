@@ -19,6 +19,7 @@ class TestSolveOptimizationProblem:
         gifts_per_person = 1  # Each person gives/receives 1 gift
         max_gifts_to_family = 4  # Allow gifts within family
         max_gifts_from_family = 4
+        max_total_intra_family_gifts = None
         max_couple_overlap = 1
         seed = 123
 
@@ -33,6 +34,7 @@ class TestSolveOptimizationProblem:
             max_gifts_to_family,
             max_gifts_from_family,
             max_couple_overlap,
+            max_total_intra_family_gifts,
             seed,
         )
 
@@ -55,6 +57,7 @@ class TestSolveOptimizationProblem:
         gifts_per_person = 1
         max_gifts_to_family = 4
         max_gifts_from_family = 4
+        max_total_intra_family_gifts = None
         max_couple_overlap = 1
         seed = 456
 
@@ -70,6 +73,7 @@ class TestSolveOptimizationProblem:
             max_gifts_to_family,
             max_gifts_from_family,
             max_couple_overlap,
+            max_total_intra_family_gifts,
             seed,
         )
 
@@ -84,6 +88,7 @@ class TestSolveOptimizationProblem:
             max_gifts_to_family,
             max_gifts_from_family,
             max_couple_overlap,
+            max_total_intra_family_gifts,
             seed,
         )
 
@@ -101,6 +106,7 @@ class TestSolveOptimizationProblem:
         gifts_per_person = 1
         max_gifts_to_family = 4
         max_gifts_from_family = 4
+        max_total_intra_family_gifts = None
         max_couple_overlap = 1
 
         # Run with different seeds
@@ -115,6 +121,7 @@ class TestSolveOptimizationProblem:
             max_gifts_to_family,
             max_gifts_from_family,
             max_couple_overlap,
+            max_total_intra_family_gifts,
             111,
         )
 
@@ -129,6 +136,7 @@ class TestSolveOptimizationProblem:
             max_gifts_to_family,
             max_gifts_from_family,
             max_couple_overlap,
+            max_total_intra_family_gifts,
             222,
         )
 
@@ -146,6 +154,7 @@ class TestSolveOptimizationProblem:
         gifts_per_person = 1
         max_gifts_to_family = 0  # Can't give within family
         max_gifts_from_family = 0
+        max_total_intra_family_gifts = None
         max_couple_overlap = 0
         seed = 123
 
@@ -162,8 +171,54 @@ class TestSolveOptimizationProblem:
                 max_gifts_to_family,
                 max_gifts_from_family,
                 max_couple_overlap,
+                max_total_intra_family_gifts,
                 seed,
             )
+
+    def test_solve_optimization_problem_with_global_family_limit(self):
+        """Test optimization with global intra-family gift limit."""
+        people = ["Alice", "Bob", "Charlie", "Diana"]
+        ly_gifts = pd.DataFrame(columns=["giver", "gift1", "gift2"])
+        couples = []
+        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
+        manual_disallows = {}
+        manual_assigns = {}
+        gifts_per_person = 1
+        max_gifts_to_family = 1
+        max_gifts_from_family = 1
+        max_total_intra_family_gifts = 1  # Very restrictive global limit
+        max_couple_overlap = 1
+        seed = 123
+
+        gifts = solve_optimization_problem(
+            people,
+            ly_gifts,
+            couples,
+            families,
+            manual_disallows,
+            manual_assigns,
+            gifts_per_person,
+            max_gifts_to_family,
+            max_gifts_from_family,
+            max_couple_overlap,
+            max_total_intra_family_gifts,
+            seed,
+        )
+
+        # Verify the result exists
+        assert gifts.value is not None
+
+        # Count intra-family gifts in the solution
+        family_gifts = 0
+        for family in families:
+            family_idx = [people.index(p) for p in family]
+            for i in family_idx:
+                for j in family_idx:
+                    if gifts.value[i, j] == 1:
+                        family_gifts += 1
+
+        # Verify global constraint is satisfied
+        assert family_gifts <= max_total_intra_family_gifts
 
 
 class TestProcessResults:

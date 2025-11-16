@@ -99,3 +99,23 @@ class TestValidateConfig:
 
         with pytest.raises(KeyError):
             validate_config(sample_config)
+
+    def test_validate_config_with_max_total_intra_family_gifts(self, sample_config):
+        """Test validation with max_total_intra_family_gifts parameter."""
+        sample_config["algorithm"]["max_total_intra_family_gifts"] = 5
+        # Should not raise any exceptions
+        validate_config(sample_config)
+
+    def test_validate_config_invalid_max_total_intra_family_gifts_type(self, sample_config):
+        """Test validation fails with non-integer max_total_intra_family_gifts."""
+        sample_config["algorithm"]["max_total_intra_family_gifts"] = "not_an_int"
+
+        with pytest.raises(AssertionError, match="must be an integer"):
+            validate_config(sample_config)
+
+    def test_validate_config_negative_max_total_intra_family_gifts(self, sample_config):
+        """Test validation fails with negative max_total_intra_family_gifts."""
+        sample_config["algorithm"]["max_total_intra_family_gifts"] = -1
+
+        with pytest.raises(AssertionError, match="must be non-negative"):
+            validate_config(sample_config)
