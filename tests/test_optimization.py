@@ -15,9 +15,11 @@ class TestSolveOptimizationProblem:
         couples = []  # No couple constraints for simplicity
         families = [["Alice", "Bob", "Charlie", "Diana"]]  # All in one family
         manual_disallows = {}
+        manual_assigns = {}
         gifts_per_person = 1  # Each person gives/receives 1 gift
         max_gifts_to_family = 4  # Allow gifts within family
         max_gifts_from_family = 4
+        max_total_intra_family_gifts = None
         max_couple_overlap = 1
         seed = 123
 
@@ -27,10 +29,12 @@ class TestSolveOptimizationProblem:
             couples,
             families,
             manual_disallows,
+            manual_assigns,
             gifts_per_person,
             max_gifts_to_family,
             max_gifts_from_family,
             max_couple_overlap,
+            max_total_intra_family_gifts,
             seed,
         )
 
@@ -49,9 +53,11 @@ class TestSolveOptimizationProblem:
         couples = []
         families = [["Alice", "Bob", "Charlie", "Diana"]]
         manual_disallows = {}
+        manual_assigns = {}
         gifts_per_person = 1
         max_gifts_to_family = 4
         max_gifts_from_family = 4
+        max_total_intra_family_gifts = None
         max_couple_overlap = 1
         seed = 456
 
@@ -62,10 +68,12 @@ class TestSolveOptimizationProblem:
             couples,
             families,
             manual_disallows,
+            manual_assigns,
             gifts_per_person,
             max_gifts_to_family,
             max_gifts_from_family,
             max_couple_overlap,
+            max_total_intra_family_gifts,
             seed,
         )
 
@@ -75,10 +83,12 @@ class TestSolveOptimizationProblem:
             couples,
             families,
             manual_disallows,
+            manual_assigns,
             gifts_per_person,
             max_gifts_to_family,
             max_gifts_from_family,
             max_couple_overlap,
+            max_total_intra_family_gifts,
             seed,
         )
 
@@ -92,9 +102,11 @@ class TestSolveOptimizationProblem:
         couples = []
         families = [["Alice", "Bob", "Charlie", "Diana"]]
         manual_disallows = {}
+        manual_assigns = {}
         gifts_per_person = 1
         max_gifts_to_family = 4
         max_gifts_from_family = 4
+        max_total_intra_family_gifts = None
         max_couple_overlap = 1
 
         # Run with different seeds
@@ -104,10 +116,12 @@ class TestSolveOptimizationProblem:
             couples,
             families,
             manual_disallows,
+            manual_assigns,
             gifts_per_person,
             max_gifts_to_family,
             max_gifts_from_family,
             max_couple_overlap,
+            max_total_intra_family_gifts,
             111,
         )
 
@@ -117,10 +131,12 @@ class TestSolveOptimizationProblem:
             couples,
             families,
             manual_disallows,
+            manual_assigns,
             gifts_per_person,
             max_gifts_to_family,
             max_gifts_from_family,
             max_couple_overlap,
+            max_total_intra_family_gifts,
             222,
         )
 
@@ -134,9 +150,11 @@ class TestSolveOptimizationProblem:
         couples = []
         families = [["Alice"], ["Bob"]]  # Each person in separate family
         manual_disallows = {"Alice": ["Bob"], "Bob": ["Alice"]}  # No one can give to anyone
+        manual_assigns = {}
         gifts_per_person = 1
         max_gifts_to_family = 0  # Can't give within family
         max_gifts_from_family = 0
+        max_total_intra_family_gifts = None
         max_couple_overlap = 0
         seed = 123
 
@@ -148,12 +166,59 @@ class TestSolveOptimizationProblem:
                 couples,
                 families,
                 manual_disallows,
+                manual_assigns,
                 gifts_per_person,
                 max_gifts_to_family,
                 max_gifts_from_family,
                 max_couple_overlap,
+                max_total_intra_family_gifts,
                 seed,
             )
+
+    def test_solve_optimization_problem_with_global_family_limit(self):
+        """Test optimization with global intra-family gift limit."""
+        people = ["Alice", "Bob", "Charlie", "Diana"]
+        ly_gifts = pd.DataFrame(columns=["giver", "gift1", "gift2"])
+        couples = []
+        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
+        manual_disallows = {}
+        manual_assigns = {}
+        gifts_per_person = 1
+        max_gifts_to_family = 1
+        max_gifts_from_family = 1
+        max_total_intra_family_gifts = 1  # Very restrictive global limit
+        max_couple_overlap = 1
+        seed = 123
+
+        gifts = solve_optimization_problem(
+            people,
+            ly_gifts,
+            couples,
+            families,
+            manual_disallows,
+            manual_assigns,
+            gifts_per_person,
+            max_gifts_to_family,
+            max_gifts_from_family,
+            max_couple_overlap,
+            max_total_intra_family_gifts,
+            seed,
+        )
+
+        # Verify the result exists
+        assert gifts.value is not None
+
+        # Count intra-family gifts in the solution
+        family_gifts = 0
+        for family in families:
+            family_idx = [people.index(p) for p in family]
+            for i in family_idx:
+                for j in family_idx:
+                    if gifts.value[i, j] == 1:
+                        family_gifts += 1
+
+        # Verify global constraint is satisfied
+        assert family_gifts <= max_total_intra_family_gifts
 
 
 class TestProcessResults:
@@ -161,6 +226,7 @@ class TestProcessResults:
         """Test successful result processing."""
         people = ["Alice", "Bob", "Charlie", "Diana"]
         gifts_per_person = 2
+        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
 
         # Use empty last year data to avoid conflicts
         ly_gifts = pd.DataFrame(columns=["giver", "gift1", "gift2"])
@@ -179,7 +245,7 @@ class TestProcessResults:
         gifts = cp.Variable((4, 4), boolean=True)
         gifts.value = solution_matrix
 
-        result = process_results(gifts, people, ly_gifts, gifts_per_person)
+        result = process_results(gifts, people, ly_gifts, gifts_per_person, families)
 
         # Verify result structure
         assert isinstance(result, pd.DataFrame)
@@ -200,6 +266,7 @@ class TestProcessResults:
         """Test that result validation catches incorrect gift counts."""
         people = ["Alice", "Bob", "Charlie", "Diana"]
         gifts_per_person = 2
+        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
         ly_gifts = pd.DataFrame(columns=["giver", "gift1", "gift2"])
 
         # Create invalid solution where Charlie gets 3 gifts instead of 2
@@ -217,12 +284,13 @@ class TestProcessResults:
 
         # Should raise assertion error about gift counts
         with pytest.raises(AssertionError, match="not every person appears exactly"):
-            process_results(gifts, people, ly_gifts, gifts_per_person)
+            process_results(gifts, people, ly_gifts, gifts_per_person, families)
 
     def test_process_results_validates_no_repeats(self):
         """Test that result validation catches repeat gifts from last year."""
         people = ["Alice", "Bob", "Charlie", "Diana"]
         gifts_per_person = 2
+        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
 
         # Last year: Alice gave to Bob and Charlie
         ly_gifts = pd.DataFrame(
@@ -248,12 +316,13 @@ class TestProcessResults:
 
         # Should raise assertion error about repeat gifts
         with pytest.raises(AssertionError, match="repeat gift detected"):
-            process_results(gifts, people, ly_gifts, gifts_per_person)
+            process_results(gifts, people, ly_gifts, gifts_per_person, families)
 
     def test_process_results_handles_new_participants(self):
         """Test processing results when some participants are new (not in last year's data)."""
         people = ["Alice", "Bob", "Charlie", "Diana"]
         gifts_per_person = 2
+        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
 
         # Last year only had Alice and Bob (with different recipients)
         ly_gifts = pd.DataFrame(
@@ -277,7 +346,7 @@ class TestProcessResults:
         gifts = cp.Variable((4, 4), boolean=True)
         gifts.value = solution_matrix
 
-        result = process_results(gifts, people, ly_gifts, gifts_per_person)
+        result = process_results(gifts, people, ly_gifts, gifts_per_person, families)
 
         # Should work fine, with Charlie and Diana having NaN for last year's data
         assert len(result) == 4

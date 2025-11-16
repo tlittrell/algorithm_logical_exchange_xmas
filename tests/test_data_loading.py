@@ -3,16 +3,17 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.algorithm_logical_exchange_xmas.run import load_data
+from src.algorithm_logical_exchange_xmas.run import load_data, load_gift_preferences
 
 
 class TestLoadData:
     def test_load_data_success(self, temp_csv_files, sample_config):
         """Test successful data loading."""
-        ly_gifts_path, ty_signup_path = temp_csv_files
+        db_path, signups_db_path = temp_csv_files
         eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
 
-        ly_gifts, people_signed_up = load_data(eligible_people, ly_gifts_path, ty_signup_path)
+        ly_gifts, people_signed_up = load_data(eligible_people, current_year, signups_db_path, db_path)
 
         # Verify last year's gifts DataFrame
         assert isinstance(ly_gifts, pd.DataFrame)
@@ -26,112 +27,368 @@ class TestLoadData:
         assert len(people_signed_up) == 4
         assert set(people_signed_up).issubset(set(eligible_people))
 
-    def test_load_data_ly_gifts_file_not_found(self, temp_csv_files, sample_config):
-        """Test error handling when last year's gifts file doesn't exist."""
-        _, ty_signup_path = temp_csv_files
+    def test_load_data_db_file_not_found(self, temp_csv_files, sample_config):
+        """Test error handling when gift database file doesn't exist."""
+        _, signups_db_path = temp_csv_files
         eligible_people = sample_config["algorithm"]["eligible_people"]
-
-        with pytest.raises(FileNotFoundError):
-            load_data(eligible_people, Path("nonexistent.csv"), ty_signup_path)
-
-    def test_load_data_ty_signup_file_not_found(self, temp_csv_files, sample_config):
-        """Test error handling when this year's signup file doesn't exist."""
-        ly_gifts_path, _ = temp_csv_files
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
 
         with pytest.raises(Exception):  # DuckDB will raise IOException  # noqa: B017, PT011
-            load_data(eligible_people, ly_gifts_path, Path("nonexistent.csv"))
+            load_data(eligible_people, current_year, signups_db_path, Path("nonexistent.csv"))
+
+    def test_load_data_signups_file_not_found(self, temp_csv_files, sample_config):
+        """Test error handling when signups database file doesn't exist."""
+        db_path, _ = temp_csv_files
+        eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
+
+        with pytest.raises(Exception):  # DuckDB will raise IOException  # noqa: B017, PT011
+            load_data(eligible_people, current_year, Path("nonexistent.csv"), db_path)
 
     def test_load_data_duplicate_ly_giver(self, temp_csv_files, sample_config):
         """Test validation fails with duplicate givers in last year's data."""
-        ly_gifts_path, ty_signup_path = temp_csv_files
+        db_path, signups_db_path = temp_csv_files
         eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
 
-        # Create invalid ly_gifts with duplicate giver
-        invalid_ly_gifts = pd.DataFrame(
+        # Create invalid database with duplicate giver
+        invalid_db = pd.DataFrame(
             {
                 "giver": ["Alice", "Alice", "Charlie"],
                 "gift1": ["Charlie", "Bob", "Bob"],
                 "gift2": ["Diana", "Diana", "Alice"],
+                "year": [2024, 2024, 2024],
             }
         )
-        invalid_ly_gifts.to_csv(ly_gifts_path, index=False)
+        invalid_db.to_csv(db_path, index=False)
 
         with pytest.raises(AssertionError):
-            load_data(eligible_people, ly_gifts_path, ty_signup_path)
+            load_data(eligible_people, current_year, signups_db_path, db_path)
 
     def test_load_data_ineligible_ly_giver(self, temp_csv_files, sample_config):
         """Test validation fails with ineligible giver in last year's data."""
-        ly_gifts_path, ty_signup_path = temp_csv_files
+        db_path, signups_db_path = temp_csv_files
         eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
 
-        # Create invalid ly_gifts with ineligible giver
-        invalid_ly_gifts = pd.DataFrame(
+        # Create invalid database with ineligible giver
+        invalid_db = pd.DataFrame(
             {
                 "giver": ["Eve", "Bob", "Charlie"],  # Eve not in eligible_people
                 "gift1": ["Charlie", "Diana", "Bob"],
                 "gift2": ["Diana", "Alice", "Alice"],
+                "year": [2024, 2024, 2024],
             }
         )
-        invalid_ly_gifts.to_csv(ly_gifts_path, index=False)
+        invalid_db.to_csv(db_path, index=False)
 
         with pytest.raises(AssertionError, match="Ineligible LY gifter"):
-            load_data(eligible_people, ly_gifts_path, ty_signup_path)
+            load_data(eligible_people, current_year, signups_db_path, db_path)
 
     def test_load_data_ineligible_signup(self, temp_csv_files, sample_config):
         """Test validation fails with ineligible person in signup data."""
-        ly_gifts_path, ty_signup_path = temp_csv_files
+        db_path, signups_db_path = temp_csv_files
         eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
 
-        # Create invalid signup with ineligible person
-        invalid_signup = pd.DataFrame(
+        # Create invalid signup database with ineligible person
+        invalid_signups = pd.DataFrame(
             {
                 "person": ["Alice", "Bob", "Eve"],  # Eve not in eligible_people
                 "is_secret_santa": [True, True, True],
-                "other_column": ["data1", "data2", "data3"],
+                "is_stockings": [True, True, True],
+                "year": [current_year, current_year, current_year],
             }
         )
-        invalid_signup.to_csv(ty_signup_path, index=False)
+        invalid_signups.to_csv(signups_db_path, index=False)
 
         with pytest.raises(AssertionError, match="People signed up aren't eligible"):
-            load_data(eligible_people, ly_gifts_path, ty_signup_path)
+            load_data(eligible_people, current_year, signups_db_path, db_path)
 
     def test_load_data_duplicate_signup(self, temp_csv_files, sample_config):
         """Test validation fails with duplicate person in signup data."""
-        ly_gifts_path, ty_signup_path = temp_csv_files
+        db_path, signups_db_path = temp_csv_files
         eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
 
-        # Create invalid signup with duplicate person
-        invalid_signup = pd.DataFrame(
+        # Create invalid signup database with duplicate person
+        invalid_signups = pd.DataFrame(
             {
                 "person": ["Alice", "Alice", "Bob"],
                 "is_secret_santa": [True, True, True],
-                "other_column": ["data1", "data2", "data3"],
+                "is_stockings": [True, True, False],
+                "year": [current_year, current_year, current_year],
             }
         )
-        invalid_signup.to_csv(ty_signup_path, index=False)
+        invalid_signups.to_csv(signups_db_path, index=False)
 
         with pytest.raises(AssertionError):
-            load_data(eligible_people, ly_gifts_path, ty_signup_path)
+            load_data(eligible_people, current_year, signups_db_path, db_path)
 
     def test_load_data_filters_non_participants(self, temp_csv_files, sample_config):
         """Test that only people with is_secret_santa=True are included."""
-        ly_gifts_path, ty_signup_path = temp_csv_files
+        db_path, signups_db_path = temp_csv_files
         eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
 
-        # Create signup with mixed participation
-        filtered_signup = pd.DataFrame(
+        # Create signup database with mixed participation
+        filtered_signups = pd.DataFrame(
             {
                 "person": ["Alice", "Bob", "Charlie", "Diana"],
                 "is_secret_santa": [True, False, True, True],  # Bob not participating
-                "other_column": ["data1", "data2", "data3", "data4"],
+                "is_stockings": [True, True, False, True],
+                "year": [current_year, current_year, current_year, current_year],
             }
         )
-        filtered_signup.to_csv(ty_signup_path, index=False)
+        filtered_signups.to_csv(signups_db_path, index=False)
 
-        ly_gifts, people_signed_up = load_data(eligible_people, ly_gifts_path, ty_signup_path)
+        ly_gifts, people_signed_up = load_data(eligible_people, current_year, signups_db_path, db_path)
 
         # Should only include Alice, Charlie, Diana (not Bob)
         assert len(people_signed_up) == 3
         assert "Bob" not in people_signed_up
         assert set(people_signed_up) == {"Alice", "Charlie", "Diana"}
+
+
+class TestLoadGiftPreferences:
+    def test_load_gift_preferences_success(self, temp_gift_preferences_file, sample_config):
+        """Test successful gift preferences loading with mixed types."""
+        eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
+
+        disallows, assigns = load_gift_preferences(
+            eligible_people, current_year, gifts_per_person, temp_gift_preferences_file
+        )
+
+        # Verify both are dictionaries
+        assert isinstance(disallows, dict)
+        assert isinstance(assigns, dict)
+
+        # Should have Alice disallowing Bob and Bob disallowing Alice
+        assert "Alice" in disallows
+        assert "Bob" in disallows
+        assert "Bob" in disallows["Alice"]
+        assert "Alice" in disallows["Bob"]
+
+        # Should have Charlie assigned to Diana
+        assert "Charlie" in assigns
+        assert "Diana" in assigns["Charlie"]
+
+    def test_load_gift_preferences_file_not_found(self, sample_config):
+        """Test that missing file returns empty dicts."""
+        eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
+
+        disallows, assigns = load_gift_preferences(
+            eligible_people, current_year, gifts_per_person, Path("nonexistent_preferences.csv")
+        )
+
+        # Should return empty dicts when file doesn't exist
+        assert disallows == {}
+        assert assigns == {}
+
+    def test_load_gift_preferences_no_current_year_data(self, sample_config):
+        """Test that no data for current year returns empty dicts."""
+        eligible_people = sample_config["algorithm"]["eligible_people"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
+        current_year = 2030  # Year with no data
+
+        # Create preferences file with different year
+        import tempfile
+
+        prefs_data = pd.DataFrame(
+            {
+                "person": ["Alice"],
+                "gift": ["Bob"],
+                "preference_type": ["disallow"],
+                "year": [2025],  # Different year
+            }
+        )
+        prefs_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+        prefs_data.to_csv(prefs_file.name, index=False)
+
+        disallows, assigns = load_gift_preferences(
+            eligible_people, current_year, gifts_per_person, Path(prefs_file.name)
+        )
+
+        # Should return empty dicts when no data for current year
+        assert disallows == {}
+        assert assigns == {}
+
+    def test_load_gift_preferences_ineligible_person(self, sample_config):
+        """Test validation fails with ineligible person in preferences."""
+        eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
+
+        # Create invalid preferences with ineligible person
+        import tempfile
+
+        invalid_prefs = pd.DataFrame(
+            {
+                "person": ["Eve"],  # Eve not in eligible_people
+                "gift": ["Alice"],
+                "preference_type": ["disallow"],
+                "year": [current_year],
+            }
+        )
+        prefs_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+        invalid_prefs.to_csv(prefs_file.name, index=False)
+
+        with pytest.raises(AssertionError, match="Ineligible person"):
+            load_gift_preferences(eligible_people, current_year, gifts_per_person, Path(prefs_file.name))
+
+    def test_load_gift_preferences_ineligible_gift(self, sample_config):
+        """Test validation fails with ineligible gift recipient in preferences."""
+        eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
+
+        # Create invalid preferences with ineligible gift recipient
+        import tempfile
+
+        invalid_prefs = pd.DataFrame(
+            {
+                "person": ["Alice"],
+                "gift": ["Eve"],  # Eve not in eligible_people
+                "preference_type": ["disallow"],
+                "year": [current_year],
+            }
+        )
+        prefs_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+        invalid_prefs.to_csv(prefs_file.name, index=False)
+
+        with pytest.raises(AssertionError, match="Ineligible gift recipient"):
+            load_gift_preferences(eligible_people, current_year, gifts_per_person, Path(prefs_file.name))
+
+    def test_load_gift_preferences_duplicate_pairs(self, sample_config):
+        """Test validation fails with duplicate person-gift pairs."""
+        eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
+
+        # Create invalid preferences with duplicate pairs
+        import tempfile
+
+        invalid_prefs = pd.DataFrame(
+            {
+                "person": ["Alice", "Alice"],
+                "gift": ["Bob", "Bob"],  # Duplicate pair
+                "preference_type": ["disallow", "disallow"],
+                "year": [current_year, current_year],
+            }
+        )
+        prefs_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+        invalid_prefs.to_csv(prefs_file.name, index=False)
+
+        with pytest.raises(AssertionError, match="Duplicate person-gift pairs"):
+            load_gift_preferences(eligible_people, current_year, gifts_per_person, Path(prefs_file.name))
+
+    def test_load_gift_preferences_multiple_disallows(self, sample_config):
+        """Test that one person can have multiple disallowed recipients."""
+        eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
+
+        # Create preferences with Alice disallowing multiple people
+        import tempfile
+
+        prefs_data = pd.DataFrame(
+            {
+                "person": ["Alice", "Alice", "Alice"],
+                "gift": ["Bob", "Charlie", "Diana"],
+                "preference_type": ["disallow", "disallow", "disallow"],
+                "year": [current_year, current_year, current_year],
+            }
+        )
+        prefs_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+        prefs_data.to_csv(prefs_file.name, index=False)
+
+        disallows, assigns = load_gift_preferences(
+            eligible_people, current_year, gifts_per_person, Path(prefs_file.name)
+        )
+
+        # Should have Alice with list of three disallowed people
+        assert "Alice" in disallows
+        assert len(disallows["Alice"]) == 3
+        assert set(disallows["Alice"]) == {"Bob", "Charlie", "Diana"}
+        assert assigns == {}  # No assigns in this test
+
+    def test_load_gift_preferences_conflict_detection(self, sample_config):
+        """Test that conflicts between disallow and assign are detected."""
+        eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
+
+        # Create conflicting preferences (Alice both disallows and must assign to Bob)
+        import tempfile
+
+        conflicting_prefs = pd.DataFrame(
+            {
+                "person": ["Alice", "Alice"],
+                "gift": ["Bob", "Bob"],
+                "preference_type": ["disallow", "assign"],
+                "year": [current_year, current_year],
+            }
+        )
+        prefs_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+        conflicting_prefs.to_csv(prefs_file.name, index=False)
+
+        with pytest.raises(AssertionError, match="Conflicting preferences"):
+            load_gift_preferences(eligible_people, current_year, gifts_per_person, Path(prefs_file.name))
+
+    def test_load_gift_preferences_over_constraint(self, sample_config):
+        """Test that over-constraint is detected (more assigns than gifts_per_person)."""
+        eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
+        gifts_per_person = 2  # Only 2 gifts per person
+
+        # Create over-constrained preferences (Alice must assign to 3 people)
+        import tempfile
+
+        over_constrained_prefs = pd.DataFrame(
+            {
+                "person": ["Alice", "Alice", "Alice"],
+                "gift": ["Bob", "Charlie", "Diana"],
+                "preference_type": ["assign", "assign", "assign"],
+                "year": [current_year, current_year, current_year],
+            }
+        )
+        prefs_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+        over_constrained_prefs.to_csv(prefs_file.name, index=False)
+
+        with pytest.raises(AssertionError, match="more assign preferences than gifts_per_person"):
+            load_gift_preferences(eligible_people, current_year, gifts_per_person, Path(prefs_file.name))
+
+    def test_load_gift_preferences_assign_only(self, sample_config):
+        """Test loading assign preferences only."""
+        eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
+
+        # Create assign-only preferences
+        import tempfile
+
+        assign_prefs = pd.DataFrame(
+            {
+                "person": ["Alice", "Bob"],
+                "gift": ["Charlie", "Diana"],
+                "preference_type": ["assign", "assign"],
+                "year": [current_year, current_year],
+            }
+        )
+        prefs_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+        assign_prefs.to_csv(prefs_file.name, index=False)
+
+        disallows, assigns = load_gift_preferences(
+            eligible_people, current_year, gifts_per_person, Path(prefs_file.name)
+        )
+
+        # Should have no disallows but two assigns
+        assert disallows == {}
+        assert "Alice" in assigns
+        assert "Bob" in assigns
+        assert "Charlie" in assigns["Alice"]
+        assert "Diana" in assigns["Bob"]

@@ -112,25 +112,35 @@ def validate_config(config: dict[str, Any]) -> None:
     assert seed >= 0
     assert isinstance(seed, int)
 
+    # Validate max_total_intra_family_gifts if present
+    if "max_total_intra_family_gifts" in algorithm_config:
+        max_total = algorithm_config["max_total_intra_family_gifts"]
+        assert isinstance(max_total, int), "max_total_intra_family_gifts must be an integer"
+        assert max_total >= 0, "max_total_intra_family_gifts must be non-negative"
+
 
 def load_data(
     eligible_people: list[str],
-    ly_gifts_path: Path = Path("data/input/ly_gifts.csv"),
-    ty_signup_path: Path = Path("data/input/ty_signup.csv"),
+    current_year: int,
+    signups_db_path: Path = Path("data/signups.csv"),
+    db_path: Path = Path("data/secret_santa_db.csv"),
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Load last year's gifts and this year's signups.
+    """Load last year's gifts and this year's signups from databases.
 
-    Reads historical gift assignment data and current year signup information,
-    validating that all participants are eligible and data integrity is maintained.
+    Queries the Secret Santa database for previous year's gift assignments and
+    signups database for current year participants, validating that all participants
+    are eligible and data integrity is maintained.
 
     Args:
         eligible_people: List of all people eligible to participate in Secret Santa.
-        ly_gifts_path: Path to CSV file containing last year's gift assignments.
-            Must have columns: "giver", "gift1", "gift2". Defaults to
-            "data/input/ly_gifts.csv".
-        ty_signup_path: Path to CSV file containing this year's signup data.
-            Must have columns: "person", "is_secret_santa". Defaults to
-            "data/input/ty_signup.csv".
+        current_year: The year for which assignments are being generated. Previous
+            year's data (current_year - 1) will be loaded for constraint creation.
+        signups_db_path: Path to the signups database CSV file containing historical
+            signup data. Must have columns: "person", "is_secret_santa", "is_stockings",
+            "year". Defaults to "data/signups.csv".
+        db_path: Path to the Secret Santa database CSV file containing historical
+            assignments. Must have columns: "giver", "gift1", "gift2", "year".
+            Defaults to "data/secret_santa_db.csv".
 
     Returns:
         A tuple containing:
@@ -140,16 +150,31 @@ def load_data(
     Raises:
         AssertionError: If data validation fails (e.g., duplicate givers, ineligible
             participants, or duplicate signups).
-        FileNotFoundError: If either input CSV file doesn't exist.
-        KeyError: If required columns are missing from the CSV files.
+        FileNotFoundError: If database files don't exist.
+        KeyError: If required columns are missing from the files.
+        duckdb.Error: If database query fails.
     """
-    logging.info("Reading in last year gifts")
-    ly_gifts = pd.read_csv(ly_gifts_path)
+    logging.info(f"Reading last year's gifts from database (year {current_year - 1})")
+    ly_gifts = duckdb.sql(
+        """
+        SELECT giver, gift1, gift2
+        FROM read_csv_auto(?)
+        WHERE year = ?
+        """,
+        params=[str(db_path), current_year - 1],
+    ).df()
     assert ly_gifts["giver"].is_unique
     assert set(ly_gifts["giver"]).issubset(eligible_people), "Ineligible LY gifter"
 
-    logging.info("Reading in this year's signups")
-    signups = duckdb.read_csv(str(ty_signup_path)).filter("is_secret_santa").df()
+    logging.info(f"Reading this year's signups from database (year {current_year})")
+    signups = duckdb.sql(
+        """
+        SELECT person
+        FROM read_csv_auto(?)
+        WHERE year = ? AND is_secret_santa = TRUE
+        """,
+        params=[str(signups_db_path), current_year],
+    ).df()
     assert set(signups["person"]).issubset(eligible_people), "People signed up aren't eligible"
     assert signups["person"].is_unique
 
@@ -157,6 +182,109 @@ def load_data(
     people_signed_up = signups["person"].to_list()
 
     return ly_gifts, people_signed_up
+
+
+def load_gift_preferences(
+    eligible_people: list[str],
+    current_year: int,
+    gifts_per_person: int,
+    preferences_db_path: Path = Path("data/gift_preferences.csv"),
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """Load gift preferences from database for current year.
+
+    Queries the gift preferences database for current year's 'disallow' and 'assign'
+    preferences and returns them in dictionary formats.
+
+    Args:
+        eligible_people: List of all people eligible to participate in Secret Santa.
+        current_year: The year for which preferences are being loaded.
+        gifts_per_person: Number of gifts each person gives (for validation).
+        preferences_db_path: Path to the gift preferences database CSV file containing
+            historical preference data. Must have columns: "person", "gift",
+            "preference_type", "year". Defaults to "data/gift_preferences.csv".
+
+    Returns:
+        Tuple of two dictionaries:
+            - manual_disallows: person names to lists of people they cannot give to
+            - manual_assigns: person names to lists of people they must give to
+        Returns empty dicts if no preferences exist for the current year.
+
+    Raises:
+        AssertionError: If validation fails (e.g., ineligible person/gift, duplicate
+            person-gift pairs, conflicts between disallow/assign, or over-constraint).
+        FileNotFoundError: If preferences database file doesn't exist.
+        KeyError: If required columns are missing from the file.
+        duckdb.Error: If database query fails.
+    """
+    logging.info(f"Reading gift preferences from database (year {current_year})")
+
+    # Check if file exists first - if not, return empty dicts
+    if not preferences_db_path.exists():
+        logging.info("No gift preferences file found, returning empty preferences")
+        return {}, {}
+
+    # Query all preferences for current year (both disallow and assign)
+    all_preferences = duckdb.sql(
+        """
+        SELECT person, gift, preference_type
+        FROM read_csv_auto(?)
+        WHERE year = ? AND preference_type IN ('disallow', 'assign')
+        """,
+        params=[str(preferences_db_path), current_year],
+    ).df()
+
+    # If no preferences for this year, return empty dicts
+    if len(all_preferences) == 0:
+        logging.info("No gift preferences found for current year")
+        return {}, {}
+
+    # Validate all persons and gifts are eligible
+    assert set(all_preferences["person"]).issubset(eligible_people), "Ineligible person in gift preferences"
+    assert set(all_preferences["gift"]).issubset(eligible_people), "Ineligible gift recipient in gift preferences"
+
+    # Check for duplicate person-gift pairs within each preference type
+    for pref_type in ["disallow", "assign"]:
+        pref_subset = all_preferences[all_preferences["preference_type"] == pref_type]
+        assert not pref_subset.duplicated(
+            subset=["person", "gift"]
+        ).any(), f"Duplicate person-gift pairs in {pref_type} preferences"
+
+    # Check for conflicts: same person-gift pair in both disallow and assign
+    disallow_prefs = all_preferences[all_preferences["preference_type"] == "disallow"]
+    assign_prefs = all_preferences[all_preferences["preference_type"] == "assign"]
+
+    disallow_pairs = set(zip(disallow_prefs["person"], disallow_prefs["gift"], strict=True))
+    assign_pairs = set(zip(assign_prefs["person"], assign_prefs["gift"], strict=True))
+
+    conflicts = disallow_pairs & assign_pairs
+    assert len(conflicts) == 0, f"Conflicting preferences (both disallow and assign): {conflicts}"
+
+    # Validate no person has more assigns than gifts_per_person
+    assign_counts = assign_prefs["person"].value_counts()
+    over_constrained = assign_counts[assign_counts > gifts_per_person]
+    assert len(over_constrained) == 0, (
+        f"People with more assign preferences than gifts_per_person ({gifts_per_person}): "
+        f"{over_constrained.to_dict()}"
+    )
+
+    # Convert to dictionary formats
+    manual_disallows: dict[str, list[str]] = {}
+    for _, row in disallow_prefs.iterrows():
+        person = row["person"]
+        gift = row["gift"]
+        if person not in manual_disallows:
+            manual_disallows[person] = []
+        manual_disallows[person].append(gift)
+
+    manual_assigns: dict[str, list[str]] = {}
+    for _, row in assign_prefs.iterrows():
+        person = row["person"]
+        gift = row["gift"]
+        if person not in manual_assigns:
+            manual_assigns[person] = []
+        manual_assigns[person].append(gift)
+
+    return manual_disallows, manual_assigns
 
 
 def create_basic_constraints(
@@ -276,6 +404,7 @@ def create_family_constraints(
     families: list[list[str]],
     max_gifts_to_family: int,
     max_gifts_from_family: int,
+    max_total_intra_family_gifts: int | None = None,
 ) -> list[cp.Constraint]:
     """Create constraints to limit gifts within families.
 
@@ -291,20 +420,33 @@ def create_family_constraints(
             own family members.
         max_gifts_from_family: Maximum number of gifts a person can receive from
             their own family members.
+        max_total_intra_family_gifts: Optional maximum total number of intra-family
+            gifts across all families. If None, no global constraint is applied.
 
     Returns:
         List of CVXPY constraints limiting within-family gift exchanges for
-        each participant based on the specified maximums.
+        each participant based on the specified maximums, plus optional global constraint.
     """
     constraints = []
 
-    # Limit gifts within families
+    # Per-person limits: gifts within families
     for family in families:
         family_idx = [people_signed_up.index(person) for person in family if person in people_signed_up]
         for person in set(family).intersection(set(people_signed_up)):
             idx = people_signed_up.index(person)
             constraints.append(cp.sum(gifts[idx, family_idx]) <= max_gifts_to_family)
             constraints.append(cp.sum(gifts[family_idx, idx]) <= max_gifts_from_family)
+
+    # Global constraint: total intra-family gifts across all families
+    if max_total_intra_family_gifts is not None:
+        total_intra_family = 0
+        for family in families:
+            family_idx = [people_signed_up.index(person) for person in family if person in people_signed_up]
+            # Sum all gifts where both giver and receiver are in this family
+            if len(family_idx) > 0:
+                total_intra_family += cp.sum(gifts[family_idx, :][:, family_idx])
+
+        constraints.append(total_intra_family <= max_total_intra_family_gifts)
 
     return constraints
 
@@ -369,16 +511,52 @@ def create_manual_disallow_constraints(
     return constraints
 
 
+def create_manual_assign_constraints(
+    gifts: cp.Variable, people_signed_up: list[str], manual_assigns: dict[str, list[str]]
+) -> list[cp.Constraint]:
+    """Create constraints for manual assigns.
+
+    Applies custom requirements specified in the configuration to force
+    specific gift assignments based on user-defined rules.
+
+    Args:
+        gifts: CVXPY boolean variable matrix (nxn) where gifts[i,j]=1 means
+            person i gives to person j.
+        people_signed_up: List of participant names currently signed up.
+        manual_assigns: Dictionary mapping giver names to lists of people
+            they must gift to (e.g., {"Alice": ["Bob"], "Charlie": ["Diana"]}).
+
+    Returns:
+        List of CVXPY constraints where gifts[i,j]=1 for all manually assigned
+        (i,j) pairs (only applied if both participants are signed up).
+    """
+    constraints = []
+
+    # Add any manual assignments (e.g. specific person must get specific recipient)
+    for person, assign_list in manual_assigns.items():
+        if person not in people_signed_up:
+            continue
+
+        person_idx = people_signed_up.index(person)
+        for p2 in [p for p in assign_list if p in people_signed_up]:
+            p2_idx = people_signed_up.index(p2)
+            constraints.append(gifts[person_idx, p2_idx] == 1)
+
+    return constraints
+
+
 def solve_optimization_problem(  # noqa: PLR0913
     people_signed_up: list[str],
     ly_gifts: pd.DataFrame,
     couples: list[list[str]],
     families: list[list[str]],
     manual_disallows: dict[str, list[str]],
+    manual_assigns: dict[str, list[str]],
     gifts_per_person: int,
     max_gifts_to_family: int,
     max_gifts_from_family: int,
     max_couple_overlap: int,
+    max_total_intra_family_gifts: int | None,
     seed: int,
 ) -> cp.Variable:
     """Set up and solve the optimization problem.
@@ -394,10 +572,13 @@ def solve_optimization_problem(  # noqa: PLR0913
         couples: List of two-element lists containing partner names.
         families: List of lists, each containing family member names.
         manual_disallows: Dictionary mapping giver names to lists of disallowed recipients.
+        manual_assigns: Dictionary mapping giver names to lists of required recipients.
         gifts_per_person: Number of gifts each person gives and receives.
         max_gifts_to_family: Maximum gifts a person can give within their family.
         max_gifts_from_family: Maximum gifts a person can receive from their family.
         max_couple_overlap: Maximum people both partners in a couple can gift.
+        max_total_intra_family_gifts: Optional maximum total number of intra-family
+            gifts across all families. If None, no global constraint is applied.
         seed: Random seed for reproducible novelty matrix generation.
 
     Returns:
@@ -414,10 +595,12 @@ def solve_optimization_problem(  # noqa: PLR0913
         ...     couples=[["Alice", "Bob"]],
         ...     families=[["Alice", "Bob"], ["Charlie"]],
         ...     manual_disallows={},
+        ...     manual_assigns={},
         ...     gifts_per_person=1,
         ...     max_gifts_to_family=0,
         ...     max_gifts_from_family=0,
         ...     max_couple_overlap=0,
+        ...     max_total_intra_family_gifts=None,
         ...     seed=42
         ... )
         >>> print(gifts.value)  # Optimal assignment matrix
@@ -441,10 +624,13 @@ def solve_optimization_problem(  # noqa: PLR0913
     constraints.extend(create_last_year_constraints(gifts, people_signed_up, ly_gifts))
     constraints.extend(create_couple_constraints(gifts, people_signed_up, couples, max_couple_overlap))
     constraints.extend(
-        create_family_constraints(gifts, people_signed_up, families, max_gifts_to_family, max_gifts_from_family)
+        create_family_constraints(
+            gifts, people_signed_up, families, max_gifts_to_family, max_gifts_from_family, max_total_intra_family_gifts
+        )
     )
     constraints.extend(create_cycle_constraints(gifts, people_signed_up))
     constraints.extend(create_manual_disallow_constraints(gifts, people_signed_up, manual_disallows))
+    constraints.extend(create_manual_assign_constraints(gifts, people_signed_up, manual_assigns))
 
     ### Create the integer programming problem
     problem = cp.Problem(objective, constraints)
@@ -465,12 +651,17 @@ def solve_optimization_problem(  # noqa: PLR0913
 
 
 def process_results(
-    gifts: cp.Variable, people_signed_up: list[str], ly_gifts: pd.DataFrame, gifts_per_person: int
+    gifts: cp.Variable,
+    people_signed_up: list[str],
+    ly_gifts: pd.DataFrame,
+    gifts_per_person: int,
+    families: list[list[str]],
 ) -> pd.DataFrame:
     """Process optimization results into a DataFrame.
 
     Converts the optimal gift assignment matrix into a human-readable DataFrame
     with giver-receiver pairs, and validates that all constraints are satisfied.
+    Also logs statistics about intra-family gift exchanges.
 
     Args:
         gifts: CVXPY Variable with solved optimal assignment matrix (nxn boolean),
@@ -479,6 +670,7 @@ def process_results(
         ly_gifts: DataFrame with last year's assignments for validation
             (columns: giver, gift1, gift2).
         gifts_per_person: Expected number of gifts each person gives/receives (for validation).
+        families: List of family groups, where each group is a list of family member names.
 
     Returns:
         DataFrame with columns:
@@ -533,6 +725,33 @@ def process_results(
         .all()
     ), "repeat gift detected"
 
+    # Calculate and log intra-family gift statistics
+    total_intra_family_gifts = 0
+    family_breakdown = {}
+
+    for family in families:
+        # Get family members who are signed up
+        family_members_signed_up = [person for person in family if person in people_signed_up]
+
+        # Count gifts within this family
+        family_gifts = 0
+        for giver_person in family_members_signed_up:
+            giver_idx = people_signed_up.index(giver_person)
+            for receiver_person in family_members_signed_up:
+                receiver_idx = people_signed_up.index(receiver_person)
+                if gifts.value[giver_idx, receiver_idx] == 1:
+                    family_gifts += 1
+
+        family_breakdown[tuple(family_members_signed_up)] = family_gifts
+        total_intra_family_gifts += family_gifts
+
+    logging.info(f"Total intra-family gifts in solution: {total_intra_family_gifts}")
+
+    # Log per-family breakdown at DEBUG level
+    for family_members, count in family_breakdown.items():
+        if count > 0:
+            logging.debug(f"  Family {family_members}: {count} intra-family gifts")
+
     return result
 
 
@@ -540,13 +759,15 @@ def generate_output(
     result: pd.DataFrame,
     message_template: str,
     emails: dict[str, str],
-    assignments_path: Path = Path("data/output/assignments.csv"),
+    current_year: int,
     messages_path: Path = Path("data/output/secret_santa_messages.md"),
+    db_path: Path = Path("data/secret_santa_db.csv"),
 ) -> None:
-    """Generate and save output files.
+    """Generate output files and update the Secret Santa database.
 
-    Creates two output files: a CSV with all gift assignments and a Markdown file
-    with personalized messages for each participant including their email addresses.
+    Updates the Secret Santa database with this year's gift assignments (replacing
+    any existing entries for the current year) and creates a Markdown file with
+    personalized messages for each participant including their email addresses.
 
     Args:
         result: DataFrame containing gift assignments with columns:
@@ -554,21 +775,39 @@ def generate_output(
         message_template: String template for personalized messages with placeholders
             {giver}, {gift1}, {gift2} that will be filled for each participant.
         emails: Dictionary mapping participant names to email addresses.
-        assignments_path: Path where the assignments CSV will be saved.
-            Defaults to "data/output/assignments.csv".
+        current_year: The year for which assignments were generated. Used to update
+            the database and allows re-running the algorithm for the same year.
         messages_path: Path where the Markdown messages will be saved.
             Defaults to "data/output/secret_santa_messages.md".
+        db_path: Path to the Secret Santa database CSV file where assignments will
+            be stored. Defaults to "data/secret_santa_db.csv".
 
     Returns:
-        None. Files are written to disk at the specified paths.
+        None. Database is updated and message file is written to disk.
 
     Raises:
         IOError: If output files cannot be written (e.g., permission denied,
             directory doesn't exist).
         KeyError: If a participant's email is missing from the emails dictionary.
+        duckdb.Error: If database update fails.
     """
-    logging.info("Writing out results")
-    result.to_csv(assignments_path, index=False)
+    logging.info(f"Updating database with results for year {current_year}")
+
+    # Read existing database
+    existing_db = duckdb.sql(f"SELECT * FROM read_csv_auto('{db_path}')").df()  # noqa: S608  # nosec B608
+
+    # Remove existing entries for current year (allows re-running)
+    updated_db = existing_db[existing_db["year"] != current_year]
+
+    # Prepare new assignments with year column
+    new_assignments = result[["giver", "gift1", "gift2"]].copy()
+    new_assignments["year"] = current_year
+
+    # Append new assignments
+    updated_db = pd.concat([updated_db, new_assignments], ignore_index=True)
+
+    # Write back to database
+    updated_db.to_csv(db_path, index=False)
 
     logging.info("Writing messages")
     markdown_output_list = []
@@ -593,20 +832,21 @@ def main() -> None:
 
     Executes the complete Secret Santa gift assignment workflow:
     1. Loads and validates configuration from TOML file
-    2. Loads historical and current participant data
+    2. Queries database for historical data and loads current participant signups
     3. Solves the constraint optimization problem
     4. Processes and validates results
-    5. Generates output CSV and personalized messages
+    5. Updates database and generates personalized messages
 
     This function serves as the entry point when running the module directly.
 
     Returns:
-        None. Output files are created in data/output/ directory.
+        None. Database is updated and message file is created in data/output/.
 
     Raises:
         FileNotFoundError: If configuration or input data files are missing.
         ValueError: If the optimization problem has no feasible solution.
         AssertionError: If configuration or results fail validation checks.
+        duckdb.Error: If database operations fail.
 
     Example:
         Run from command line::
@@ -623,8 +863,8 @@ def main() -> None:
 
     # Extract config values
     seed = config["seed"]
+    current_year = config["current_year"]
     emails = config["emails"]
-    manual_disallows = config["manual_disallows"]
 
     # Algorithm configuration
     algorithm_config = config["algorithm"]
@@ -635,13 +875,22 @@ def main() -> None:
     gifts_per_person = algorithm_config["gifts_per_person"]
     max_gifts_to_family = algorithm_config["max_gifts_to_family"]
     max_gifts_from_family = algorithm_config["max_gifts_from_family"]
+    max_total_intra_family_gifts = algorithm_config.get("max_total_intra_family_gifts")
     max_couple_overlap = algorithm_config["max_couple_overlap"]
 
     # Load data
     ly_gifts, people_signed_up = load_data(
         eligible_people,
-        ly_gifts_path=Path("data/input/ly_gifts.csv"),
-        ty_signup_path=Path("data/input/ty_signup.csv"),
+        current_year,
+        signups_db_path=Path("data/signups.csv"),
+    )
+
+    # Load gift preferences
+    manual_disallows, manual_assigns = load_gift_preferences(
+        eligible_people,
+        current_year,
+        gifts_per_person,
+        preferences_db_path=Path("data/gift_preferences.csv"),
     )
 
     # Solve optimization problem
@@ -651,22 +900,24 @@ def main() -> None:
         couples,
         families,
         manual_disallows,
+        manual_assigns,
         gifts_per_person,
         max_gifts_to_family,
         max_gifts_from_family,
         max_couple_overlap,
+        max_total_intra_family_gifts,
         seed,
     )
 
     # Process results
-    result = process_results(gifts, people_signed_up, ly_gifts, gifts_per_person)
+    result = process_results(gifts, people_signed_up, ly_gifts, gifts_per_person, families)
 
     # Generate output
     generate_output(
         result,
         message_template,
         emails,
-        assignments_path=Path("data/output/assignments.csv"),
+        current_year,
         messages_path=Path("data/output/secret_santa_messages.md"),
     )
 

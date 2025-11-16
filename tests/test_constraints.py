@@ -7,6 +7,7 @@ from src.algorithm_logical_exchange_xmas.run import (
     create_cycle_constraints,
     create_family_constraints,
     create_last_year_constraints,
+    create_manual_assign_constraints,
     create_manual_disallow_constraints,
 )
 
@@ -173,6 +174,51 @@ class TestFamilyConstraints:
         assert len(constraints) == 0
 
 
+class TestFamilyConstraintsGlobalLimit:
+    def test_create_family_constraints_with_global_limit(self):
+        """Test family constraints with global intra-family limit."""
+        people = ["Alice", "Bob", "Charlie", "Diana"]
+        gifts = cp.Variable((4, 4), boolean=True)
+        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
+        max_to_family = 1
+        max_from_family = 1
+        max_total_intra_family = 3  # Global limit
+
+        constraints = create_family_constraints(
+            gifts, people, families, max_to_family, max_from_family, max_total_intra_family
+        )
+
+        # Should have per-person constraints (4 people * 2 = 8) + 1 global constraint = 9
+        assert len(constraints) == 9
+
+    def test_create_family_constraints_without_global_limit(self):
+        """Test family constraints without global limit (backward compatibility)."""
+        people = ["Alice", "Bob", "Charlie", "Diana"]
+        gifts = cp.Variable((4, 4), boolean=True)
+        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
+        max_to_family = 1
+        max_from_family = 1
+
+        # Call without max_total_intra_family_gifts parameter
+        constraints = create_family_constraints(gifts, people, families, max_to_family, max_from_family)
+
+        # Should have only per-person constraints (4 people * 2 = 8)
+        assert len(constraints) == 8
+
+    def test_create_family_constraints_global_limit_none(self):
+        """Test that None for global limit is treated as no constraint."""
+        people = ["Alice", "Bob", "Charlie", "Diana"]
+        gifts = cp.Variable((4, 4), boolean=True)
+        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
+        max_to_family = 1
+        max_from_family = 1
+
+        constraints = create_family_constraints(gifts, people, families, max_to_family, max_from_family, None)
+
+        # Should have only per-person constraints (4 people * 2 = 8)
+        assert len(constraints) == 8
+
+
 class TestCycleConstraints:
     def test_create_cycle_constraints(self):
         """Test cycle constraints creation."""
@@ -248,4 +294,59 @@ class TestManualDisallowConstraints:
         constraints = create_manual_disallow_constraints(gifts, people, manual_disallows)
 
         # Should create 2 constraints (Alice->Alice and Alice->Bob)
+        assert len(constraints) == 2
+
+
+class TestManualAssignConstraints:
+    def test_create_manual_assign_constraints(self):
+        """Test manual assign constraints creation."""
+        people = ["Alice", "Bob", "Charlie", "Diana"]
+        gifts = cp.Variable((4, 4), boolean=True)
+        manual_assigns = {
+            "Alice": ["Charlie"],
+            "Bob": ["Diana"],
+        }
+
+        constraints = create_manual_assign_constraints(gifts, people, manual_assigns)
+
+        # Alice must give to Charlie (1 constraint)
+        # Bob must give to Diana (1 constraint)
+        # Total: 2 constraints
+        assert len(constraints) == 2
+
+    def test_create_manual_assign_constraints_non_participant(self):
+        """Test manual assign constraints when assigned person doesn't participate."""
+        people = ["Alice", "Bob", "Charlie"]  # Diana not participating
+        gifts = cp.Variable((3, 3), boolean=True)
+        manual_assigns = {
+            "Alice": ["Charlie", "Diana"],  # Diana not participating
+            "Eve": ["Bob"],  # Eve not participating
+        }
+
+        constraints = create_manual_assign_constraints(gifts, people, manual_assigns)
+
+        # Only Alice->Charlie constraint should be created
+        assert len(constraints) == 1
+
+    def test_create_manual_assign_constraints_empty(self):
+        """Test manual assign constraints with no assigns."""
+        people = ["Alice", "Bob", "Charlie"]
+        gifts = cp.Variable((3, 3), boolean=True)
+        manual_assigns = {}
+
+        constraints = create_manual_assign_constraints(gifts, people, manual_assigns)
+
+        assert len(constraints) == 0
+
+    def test_create_manual_assign_constraints_multiple_per_person(self):
+        """Test manual assign constraints with multiple assigns for one person."""
+        people = ["Alice", "Bob", "Charlie", "Diana"]
+        gifts = cp.Variable((4, 4), boolean=True)
+        manual_assigns = {
+            "Alice": ["Bob", "Charlie"],  # Alice must give to both Bob and Charlie
+        }
+
+        constraints = create_manual_assign_constraints(gifts, people, manual_assigns)
+
+        # Should create 2 constraints (Alice->Bob and Alice->Charlie)
         assert len(constraints) == 2
