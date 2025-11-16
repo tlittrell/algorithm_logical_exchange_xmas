@@ -171,6 +171,7 @@ class TestProcessResults:
         """Test successful result processing."""
         people = ["Alice", "Bob", "Charlie", "Diana"]
         gifts_per_person = 2
+        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
 
         # Use empty last year data to avoid conflicts
         ly_gifts = pd.DataFrame(columns=["giver", "gift1", "gift2"])
@@ -189,7 +190,7 @@ class TestProcessResults:
         gifts = cp.Variable((4, 4), boolean=True)
         gifts.value = solution_matrix
 
-        result = process_results(gifts, people, ly_gifts, gifts_per_person)
+        result = process_results(gifts, people, ly_gifts, gifts_per_person, families)
 
         # Verify result structure
         assert isinstance(result, pd.DataFrame)
@@ -210,6 +211,7 @@ class TestProcessResults:
         """Test that result validation catches incorrect gift counts."""
         people = ["Alice", "Bob", "Charlie", "Diana"]
         gifts_per_person = 2
+        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
         ly_gifts = pd.DataFrame(columns=["giver", "gift1", "gift2"])
 
         # Create invalid solution where Charlie gets 3 gifts instead of 2
@@ -227,12 +229,13 @@ class TestProcessResults:
 
         # Should raise assertion error about gift counts
         with pytest.raises(AssertionError, match="not every person appears exactly"):
-            process_results(gifts, people, ly_gifts, gifts_per_person)
+            process_results(gifts, people, ly_gifts, gifts_per_person, families)
 
     def test_process_results_validates_no_repeats(self):
         """Test that result validation catches repeat gifts from last year."""
         people = ["Alice", "Bob", "Charlie", "Diana"]
         gifts_per_person = 2
+        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
 
         # Last year: Alice gave to Bob and Charlie
         ly_gifts = pd.DataFrame(
@@ -258,12 +261,13 @@ class TestProcessResults:
 
         # Should raise assertion error about repeat gifts
         with pytest.raises(AssertionError, match="repeat gift detected"):
-            process_results(gifts, people, ly_gifts, gifts_per_person)
+            process_results(gifts, people, ly_gifts, gifts_per_person, families)
 
     def test_process_results_handles_new_participants(self):
         """Test processing results when some participants are new (not in last year's data)."""
         people = ["Alice", "Bob", "Charlie", "Diana"]
         gifts_per_person = 2
+        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
 
         # Last year only had Alice and Bob (with different recipients)
         ly_gifts = pd.DataFrame(
@@ -287,7 +291,7 @@ class TestProcessResults:
         gifts = cp.Variable((4, 4), boolean=True)
         gifts.value = solution_matrix
 
-        result = process_results(gifts, people, ly_gifts, gifts_per_person)
+        result = process_results(gifts, people, ly_gifts, gifts_per_person, families)
 
         # Should work fine, with Charlie and Diana having NaN for last year's data
         assert len(result) == 4

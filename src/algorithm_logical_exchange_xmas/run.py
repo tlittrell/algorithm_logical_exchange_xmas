@@ -631,12 +631,17 @@ def solve_optimization_problem(  # noqa: PLR0913
 
 
 def process_results(
-    gifts: cp.Variable, people_signed_up: list[str], ly_gifts: pd.DataFrame, gifts_per_person: int
+    gifts: cp.Variable,
+    people_signed_up: list[str],
+    ly_gifts: pd.DataFrame,
+    gifts_per_person: int,
+    families: list[list[str]],
 ) -> pd.DataFrame:
     """Process optimization results into a DataFrame.
 
     Converts the optimal gift assignment matrix into a human-readable DataFrame
     with giver-receiver pairs, and validates that all constraints are satisfied.
+    Also logs statistics about intra-family gift exchanges.
 
     Args:
         gifts: CVXPY Variable with solved optimal assignment matrix (nxn boolean),
@@ -645,6 +650,7 @@ def process_results(
         ly_gifts: DataFrame with last year's assignments for validation
             (columns: giver, gift1, gift2).
         gifts_per_person: Expected number of gifts each person gives/receives (for validation).
+        families: List of family groups, where each group is a list of family member names.
 
     Returns:
         DataFrame with columns:
@@ -698,6 +704,33 @@ def process_results(
         .all()
         .all()
     ), "repeat gift detected"
+
+    # Calculate and log intra-family gift statistics
+    total_intra_family_gifts = 0
+    family_breakdown = {}
+
+    for family in families:
+        # Get family members who are signed up
+        family_members_signed_up = [person for person in family if person in people_signed_up]
+
+        # Count gifts within this family
+        family_gifts = 0
+        for giver in family_members_signed_up:
+            giver_idx = people_signed_up.index(giver)
+            for receiver in family_members_signed_up:
+                receiver_idx = people_signed_up.index(receiver)
+                if gifts.value[giver_idx, receiver_idx] == 1:
+                    family_gifts += 1
+
+        family_breakdown[tuple(family_members_signed_up)] = family_gifts
+        total_intra_family_gifts += family_gifts
+
+    logging.info(f"Total intra-family gifts in solution: {total_intra_family_gifts}")
+
+    # Log per-family breakdown at DEBUG level
+    for family_members, count in family_breakdown.items():
+        if count > 0:
+            logging.debug(f"  Family {family_members}: {count} intra-family gifts")
 
     return result
 
@@ -855,7 +888,7 @@ def main() -> None:
     )
 
     # Process results
-    result = process_results(gifts, people_signed_up, ly_gifts, gifts_per_person)
+    result = process_results(gifts, people_signed_up, ly_gifts, gifts_per_person, families)
 
     # Generate output
     generate_output(
