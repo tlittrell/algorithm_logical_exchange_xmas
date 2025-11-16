@@ -133,24 +133,28 @@ Frank,Diana,Alice,2024
 
 **Note:** The database is automatically updated with new assignments after running the algorithm. You can re-run the algorithm for the same year, and it will replace the existing entries for that year.
 
-### 2. This Year's Signups (`data/input/ty_signup.csv`)
+### 2. Signups Database (`data/signups.csv`)
 
-Indicates who is participating this year.
+A historical database containing signup information for all years. The algorithm queries this database for the current year's participants (based on `current_year` from config) to determine who is participating.
 
 ```csv
-person,is_secret_santa
-Alice,true
-Bob,true
-Charlie,true
-Diana,false
-Eve,true
-Frank,true
+person,is_secret_santa,is_stockings,year
+Alice,true,true,2025
+Bob,true,true,2025
+Charlie,true,false,2025
+Diana,false,true,2025
+Eve,true,true,2025
+Frank,true,false,2025
 ```
 
 **Required columns:**
 
 - `person`: Participant name
-- `is_secret_santa`: Boolean indicating participation (`true`/`false`)
+- `is_secret_santa`: Boolean indicating Secret Santa participation (`true`/`false`)
+- `is_stockings`: Boolean indicating stockings participation (`true`/`false`)
+- `year`: Year of signup (integer)
+
+**Note:** Only participants with `is_secret_santa = true` for the current year will be included in the gift assignment algorithm. The `is_stockings` column is available for future features
 
 ## Usage
 

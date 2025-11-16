@@ -46,13 +46,14 @@ def sample_ly_gifts() -> pd.DataFrame:
 
 
 @pytest.fixture
-def sample_ty_signup() -> pd.DataFrame:
-    """Sample this year's signup data."""
+def sample_signups() -> pd.DataFrame:
+    """Sample signup database data."""
     return pd.DataFrame(
         {
             "person": ["Alice", "Bob", "Charlie", "Diana"],
             "is_secret_santa": [True, True, True, True],
-            "other_column": ["data1", "data2", "data3", "data4"],
+            "is_stockings": [True, True, False, True],
+            "year": [2025, 2025, 2025, 2025],
         }
     )
 
@@ -68,15 +69,15 @@ def temp_config_file(sample_config):
 
 
 @pytest.fixture
-def temp_csv_files(sample_ly_gifts, sample_ty_signup):
-    """Create temporary CSV files for testing."""
+def temp_csv_files(sample_ly_gifts, sample_signups):
+    """Create temporary database files for testing."""
     db_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
-    ty_signup_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+    signups_db_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
 
     sample_ly_gifts.to_csv(db_file.name, index=False)
-    sample_ty_signup.to_csv(ty_signup_file.name, index=False)
+    sample_signups.to_csv(signups_db_file.name, index=False)
 
-    return Path(db_file.name), Path(ty_signup_file.name)
+    return Path(db_file.name), Path(signups_db_file.name)
 
 
 @pytest.fixture

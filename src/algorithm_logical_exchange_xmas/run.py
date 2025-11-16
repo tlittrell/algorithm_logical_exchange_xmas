@@ -116,22 +116,22 @@ def validate_config(config: dict[str, Any]) -> None:
 def load_data(
     eligible_people: list[str],
     current_year: int,
-    ty_signup_path: Path = Path("data/input/ty_signup.csv"),
+    signups_db_path: Path = Path("data/signups.csv"),
     db_path: Path = Path("data/secret_santa_db.csv"),
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Load last year's gifts from database and this year's signups.
+    """Load last year's gifts and this year's signups from databases.
 
-    Queries the Secret Santa database for previous year's gift assignments and reads
-    current year signup information, validating that all participants are eligible
-    and data integrity is maintained.
+    Queries the Secret Santa database for previous year's gift assignments and
+    signups database for current year participants, validating that all participants
+    are eligible and data integrity is maintained.
 
     Args:
         eligible_people: List of all people eligible to participate in Secret Santa.
         current_year: The year for which assignments are being generated. Previous
             year's data (current_year - 1) will be loaded for constraint creation.
-        ty_signup_path: Path to CSV file containing this year's signup data.
-            Must have columns: "person", "is_secret_santa". Defaults to
-            "data/input/ty_signup.csv".
+        signups_db_path: Path to the signups database CSV file containing historical
+            signup data. Must have columns: "person", "is_secret_santa", "is_stockings",
+            "year". Defaults to "data/signups.csv".
         db_path: Path to the Secret Santa database CSV file containing historical
             assignments. Must have columns: "giver", "gift1", "gift2", "year".
             Defaults to "data/secret_santa_db.csv".
@@ -144,7 +144,7 @@ def load_data(
     Raises:
         AssertionError: If data validation fails (e.g., duplicate givers, ineligible
             participants, or duplicate signups).
-        FileNotFoundError: If database file or signup CSV doesn't exist.
+        FileNotFoundError: If database files don't exist.
         KeyError: If required columns are missing from the files.
         duckdb.Error: If database query fails.
     """
@@ -160,8 +160,15 @@ def load_data(
     assert ly_gifts["giver"].is_unique
     assert set(ly_gifts["giver"]).issubset(eligible_people), "Ineligible LY gifter"
 
-    logging.info("Reading in this year's signups")
-    signups = duckdb.read_csv(str(ty_signup_path)).filter("is_secret_santa").df()
+    logging.info(f"Reading this year's signups from database (year {current_year})")
+    signups = duckdb.sql(
+        """
+        SELECT person
+        FROM read_csv_auto(?)
+        WHERE year = ? AND is_secret_santa = TRUE
+        """,
+        params=[str(signups_db_path), current_year],
+    ).df()
     assert set(signups["person"]).issubset(eligible_people), "People signed up aren't eligible"
     assert signups["person"].is_unique
 
@@ -675,7 +682,7 @@ def main() -> None:
     ly_gifts, people_signed_up = load_data(
         eligible_people,
         current_year,
-        ty_signup_path=Path("data/input/ty_signup.csv"),
+        signups_db_path=Path("data/signups.csv"),
     )
 
     # Solve optimization problem
