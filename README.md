@@ -60,6 +60,7 @@ Create a `local_config.toml` file in the project root with the following structu
 
 ```toml
 seed = 42  # Random seed for reproducibility
+current_year = 2025  # Year for which assignments are being generated
 
 [algorithm]
 eligible_people = ["Alice", "Bob", "Charlie", "Diana", "Eve", "Frank"]
@@ -107,27 +108,30 @@ Frank = "frank@example.com"
 
 ## Input Data
 
-The algorithm requires two CSV files in the `data/input/` directory:
+The algorithm requires two data sources:
 
-### 1. Last Year's Gifts (`data/input/ly_gifts.csv`)
+### 1. Secret Santa Database (`data/secret_santa_db.csv`)
 
-Records gift assignments from the previous year to prevent repeats.
+A historical database containing gift assignments from all previous years. The algorithm queries this database for the previous year's data (based on `current_year - 1` from config) to prevent repeat assignments.
 
 ```csv
-giver,gift1,gift2
-Alice,Charlie,Diana
-Bob,Eve,Frank
-Charlie,Alice,Bob
-Diana,Frank,Eve
-Eve,Bob,Charlie
-Frank,Diana,Alice
+giver,gift1,gift2,year
+Alice,Charlie,Diana,2024
+Bob,Eve,Frank,2024
+Charlie,Alice,Bob,2024
+Diana,Frank,Eve,2024
+Eve,Bob,Charlie,2024
+Frank,Diana,Alice,2024
 ```
 
 **Required columns:**
 
-- `giver`: Person who gave gifts (must be unique)
+- `giver`: Person who gave gifts (must be unique per year)
 - `gift1`: First gift recipient
 - `gift2`: Second gift recipient
+- `year`: Year of the assignment (integer)
+
+**Note:** The database is automatically updated with new assignments after running the algorithm. You can re-run the algorithm for the same year, and it will replace the existing entries for that year.
 
 ### 2. This Year's Signups (`data/input/ty_signup.csv`)
 
@@ -165,25 +169,33 @@ python -m algorithm_logical_exchange_xmas.run
 The algorithm will:
 
 1. Load and validate configuration from `local_config.toml`
-2. Read input data files
-3. Build and solve the optimization problem
-4. Generate output files in `data/output/`
+2. Query the database for previous year's assignments (year = `current_year - 1`)
+3. Read this year's signup data
+4. Build and solve the optimization problem with all constraints
+5. Update the database with new assignments for `current_year`
+6. Generate personalized messages in `data/output/`
+
+**Re-running the algorithm:** If you need to regenerate assignments for the same year (e.g., if constraints changed), simply run the algorithm again. It will automatically replace the existing entries for `current_year` in the database.
 
 ## Output
 
-The algorithm generates two files in `data/output/`:
+The algorithm produces the following outputs:
 
-### 1. Assignments CSV (`data/output/assignments.csv`)
+### 1. Database Update (`data/secret_santa_db.csv`)
 
-A structured file with all gift assignments:
+The Secret Santa database is automatically updated with new assignments for the current year. Each row includes the giver, recipients, and year:
 
 ```csv
-giver,gift1,gift2,gift1_ly,gift2_ly
-Alice,Eve,Frank,Charlie,Diana
-Bob,Charlie,Alice,Eve,Frank
-Charlie,Frank,Diana,Alice,Bob
+giver,gift1,gift2,year
+Alice,Charlie,Diana,2024
+Bob,Eve,Frank,2024
+...
+Alice,Eve,Frank,2025
+Bob,Charlie,Alice,2025
 ...
 ```
+
+This database serves as both an output (for the current year) and an input (for future years), maintaining a complete historical record of all gift assignments.
 
 ### 2. Secret Santa Messages (`data/output/secret_santa_messages.md`)
 

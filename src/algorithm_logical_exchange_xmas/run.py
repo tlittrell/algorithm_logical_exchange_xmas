@@ -115,22 +115,26 @@ def validate_config(config: dict[str, Any]) -> None:
 
 def load_data(
     eligible_people: list[str],
-    ly_gifts_path: Path = Path("data/input/ly_gifts.csv"),
+    current_year: int,
     ty_signup_path: Path = Path("data/input/ty_signup.csv"),
+    db_path: Path = Path("data/secret_santa_db.csv"),
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Load last year's gifts and this year's signups.
+    """Load last year's gifts from database and this year's signups.
 
-    Reads historical gift assignment data and current year signup information,
-    validating that all participants are eligible and data integrity is maintained.
+    Queries the Secret Santa database for previous year's gift assignments and reads
+    current year signup information, validating that all participants are eligible
+    and data integrity is maintained.
 
     Args:
         eligible_people: List of all people eligible to participate in Secret Santa.
-        ly_gifts_path: Path to CSV file containing last year's gift assignments.
-            Must have columns: "giver", "gift1", "gift2". Defaults to
-            "data/input/ly_gifts.csv".
+        current_year: The year for which assignments are being generated. Previous
+            year's data (current_year - 1) will be loaded for constraint creation.
         ty_signup_path: Path to CSV file containing this year's signup data.
             Must have columns: "person", "is_secret_santa". Defaults to
             "data/input/ty_signup.csv".
+        db_path: Path to the Secret Santa database CSV file containing historical
+            assignments. Must have columns: "giver", "gift1", "gift2", "year".
+            Defaults to "data/secret_santa_db.csv".
 
     Returns:
         A tuple containing:
@@ -140,11 +144,19 @@ def load_data(
     Raises:
         AssertionError: If data validation fails (e.g., duplicate givers, ineligible
             participants, or duplicate signups).
-        FileNotFoundError: If either input CSV file doesn't exist.
-        KeyError: If required columns are missing from the CSV files.
+        FileNotFoundError: If database file or signup CSV doesn't exist.
+        KeyError: If required columns are missing from the files.
+        duckdb.Error: If database query fails.
     """
-    logging.info("Reading in last year gifts")
-    ly_gifts = pd.read_csv(ly_gifts_path)
+    logging.info(f"Reading last year's gifts from database (year {current_year - 1})")
+    ly_gifts = duckdb.sql(
+        """
+        SELECT giver, gift1, gift2
+        FROM read_csv_auto(?)
+        WHERE year = ?
+        """,
+        params=[str(db_path), current_year - 1],
+    ).df()
     assert ly_gifts["giver"].is_unique
     assert set(ly_gifts["giver"]).issubset(eligible_people), "Ineligible LY gifter"
 
@@ -540,13 +552,15 @@ def generate_output(
     result: pd.DataFrame,
     message_template: str,
     emails: dict[str, str],
-    assignments_path: Path = Path("data/output/assignments.csv"),
+    current_year: int,
     messages_path: Path = Path("data/output/secret_santa_messages.md"),
+    db_path: Path = Path("data/secret_santa_db.csv"),
 ) -> None:
-    """Generate and save output files.
+    """Generate output files and update the Secret Santa database.
 
-    Creates two output files: a CSV with all gift assignments and a Markdown file
-    with personalized messages for each participant including their email addresses.
+    Updates the Secret Santa database with this year's gift assignments (replacing
+    any existing entries for the current year) and creates a Markdown file with
+    personalized messages for each participant including their email addresses.
 
     Args:
         result: DataFrame containing gift assignments with columns:
@@ -554,21 +568,39 @@ def generate_output(
         message_template: String template for personalized messages with placeholders
             {giver}, {gift1}, {gift2} that will be filled for each participant.
         emails: Dictionary mapping participant names to email addresses.
-        assignments_path: Path where the assignments CSV will be saved.
-            Defaults to "data/output/assignments.csv".
+        current_year: The year for which assignments were generated. Used to update
+            the database and allows re-running the algorithm for the same year.
         messages_path: Path where the Markdown messages will be saved.
             Defaults to "data/output/secret_santa_messages.md".
+        db_path: Path to the Secret Santa database CSV file where assignments will
+            be stored. Defaults to "data/secret_santa_db.csv".
 
     Returns:
-        None. Files are written to disk at the specified paths.
+        None. Database is updated and message file is written to disk.
 
     Raises:
         IOError: If output files cannot be written (e.g., permission denied,
             directory doesn't exist).
         KeyError: If a participant's email is missing from the emails dictionary.
+        duckdb.Error: If database update fails.
     """
-    logging.info("Writing out results")
-    result.to_csv(assignments_path, index=False)
+    logging.info(f"Updating database with results for year {current_year}")
+
+    # Read existing database
+    existing_db = duckdb.sql(f"SELECT * FROM read_csv_auto('{db_path}')").df()
+
+    # Remove existing entries for current year (allows re-running)
+    updated_db = existing_db[existing_db["year"] != current_year]
+
+    # Prepare new assignments with year column
+    new_assignments = result[["giver", "gift1", "gift2"]].copy()
+    new_assignments["year"] = current_year
+
+    # Append new assignments
+    updated_db = pd.concat([updated_db, new_assignments], ignore_index=True)
+
+    # Write back to database
+    updated_db.to_csv(db_path, index=False)
 
     logging.info("Writing messages")
     markdown_output_list = []
@@ -593,20 +625,21 @@ def main() -> None:
 
     Executes the complete Secret Santa gift assignment workflow:
     1. Loads and validates configuration from TOML file
-    2. Loads historical and current participant data
+    2. Queries database for historical data and loads current participant signups
     3. Solves the constraint optimization problem
     4. Processes and validates results
-    5. Generates output CSV and personalized messages
+    5. Updates database and generates personalized messages
 
     This function serves as the entry point when running the module directly.
 
     Returns:
-        None. Output files are created in data/output/ directory.
+        None. Database is updated and message file is created in data/output/.
 
     Raises:
         FileNotFoundError: If configuration or input data files are missing.
         ValueError: If the optimization problem has no feasible solution.
         AssertionError: If configuration or results fail validation checks.
+        duckdb.Error: If database operations fail.
 
     Example:
         Run from command line::
@@ -623,6 +656,7 @@ def main() -> None:
 
     # Extract config values
     seed = config["seed"]
+    current_year = config["current_year"]
     emails = config["emails"]
     manual_disallows = config["manual_disallows"]
 
@@ -640,7 +674,7 @@ def main() -> None:
     # Load data
     ly_gifts, people_signed_up = load_data(
         eligible_people,
-        ly_gifts_path=Path("data/input/ly_gifts.csv"),
+        current_year,
         ty_signup_path=Path("data/input/ty_signup.csv"),
     )
 
@@ -666,7 +700,7 @@ def main() -> None:
         result,
         message_template,
         emails,
-        assignments_path=Path("data/output/assignments.csv"),
+        current_year,
         messages_path=Path("data/output/secret_santa_messages.md"),
     )
 

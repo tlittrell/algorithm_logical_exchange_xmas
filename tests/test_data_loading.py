@@ -9,10 +9,11 @@ from src.algorithm_logical_exchange_xmas.run import load_data
 class TestLoadData:
     def test_load_data_success(self, temp_csv_files, sample_config):
         """Test successful data loading."""
-        ly_gifts_path, ty_signup_path = temp_csv_files
+        db_path, ty_signup_path = temp_csv_files
         eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
 
-        ly_gifts, people_signed_up = load_data(eligible_people, ly_gifts_path, ty_signup_path)
+        ly_gifts, people_signed_up = load_data(eligible_people, current_year, ty_signup_path, db_path)
 
         # Verify last year's gifts DataFrame
         assert isinstance(ly_gifts, pd.DataFrame)
@@ -26,62 +27,69 @@ class TestLoadData:
         assert len(people_signed_up) == 4
         assert set(people_signed_up).issubset(set(eligible_people))
 
-    def test_load_data_ly_gifts_file_not_found(self, temp_csv_files, sample_config):
-        """Test error handling when last year's gifts file doesn't exist."""
+    def test_load_data_db_file_not_found(self, temp_csv_files, sample_config):
+        """Test error handling when database file doesn't exist."""
         _, ty_signup_path = temp_csv_files
         eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
 
-        with pytest.raises(FileNotFoundError):
-            load_data(eligible_people, Path("nonexistent.csv"), ty_signup_path)
+        with pytest.raises(Exception):  # DuckDB will raise IOException  # noqa: B017, PT011
+            load_data(eligible_people, current_year, ty_signup_path, Path("nonexistent.csv"))
 
     def test_load_data_ty_signup_file_not_found(self, temp_csv_files, sample_config):
         """Test error handling when this year's signup file doesn't exist."""
-        ly_gifts_path, _ = temp_csv_files
+        db_path, _ = temp_csv_files
         eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
 
         with pytest.raises(Exception):  # DuckDB will raise IOException  # noqa: B017, PT011
-            load_data(eligible_people, ly_gifts_path, Path("nonexistent.csv"))
+            load_data(eligible_people, current_year, Path("nonexistent.csv"), db_path)
 
     def test_load_data_duplicate_ly_giver(self, temp_csv_files, sample_config):
         """Test validation fails with duplicate givers in last year's data."""
-        ly_gifts_path, ty_signup_path = temp_csv_files
+        db_path, ty_signup_path = temp_csv_files
         eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
 
-        # Create invalid ly_gifts with duplicate giver
-        invalid_ly_gifts = pd.DataFrame(
+        # Create invalid database with duplicate giver
+        invalid_db = pd.DataFrame(
             {
                 "giver": ["Alice", "Alice", "Charlie"],
                 "gift1": ["Charlie", "Bob", "Bob"],
                 "gift2": ["Diana", "Diana", "Alice"],
+                "year": [2024, 2024, 2024],
             }
         )
-        invalid_ly_gifts.to_csv(ly_gifts_path, index=False)
+        invalid_db.to_csv(db_path, index=False)
 
         with pytest.raises(AssertionError):
-            load_data(eligible_people, ly_gifts_path, ty_signup_path)
+            load_data(eligible_people, current_year, ty_signup_path, db_path)
 
     def test_load_data_ineligible_ly_giver(self, temp_csv_files, sample_config):
         """Test validation fails with ineligible giver in last year's data."""
-        ly_gifts_path, ty_signup_path = temp_csv_files
+        db_path, ty_signup_path = temp_csv_files
         eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
 
-        # Create invalid ly_gifts with ineligible giver
-        invalid_ly_gifts = pd.DataFrame(
+        # Create invalid database with ineligible giver
+        invalid_db = pd.DataFrame(
             {
                 "giver": ["Eve", "Bob", "Charlie"],  # Eve not in eligible_people
                 "gift1": ["Charlie", "Diana", "Bob"],
                 "gift2": ["Diana", "Alice", "Alice"],
+                "year": [2024, 2024, 2024],
             }
         )
-        invalid_ly_gifts.to_csv(ly_gifts_path, index=False)
+        invalid_db.to_csv(db_path, index=False)
 
         with pytest.raises(AssertionError, match="Ineligible LY gifter"):
-            load_data(eligible_people, ly_gifts_path, ty_signup_path)
+            load_data(eligible_people, current_year, ty_signup_path, db_path)
 
     def test_load_data_ineligible_signup(self, temp_csv_files, sample_config):
         """Test validation fails with ineligible person in signup data."""
-        ly_gifts_path, ty_signup_path = temp_csv_files
+        db_path, ty_signup_path = temp_csv_files
         eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
 
         # Create invalid signup with ineligible person
         invalid_signup = pd.DataFrame(
@@ -94,12 +102,13 @@ class TestLoadData:
         invalid_signup.to_csv(ty_signup_path, index=False)
 
         with pytest.raises(AssertionError, match="People signed up aren't eligible"):
-            load_data(eligible_people, ly_gifts_path, ty_signup_path)
+            load_data(eligible_people, current_year, ty_signup_path, db_path)
 
     def test_load_data_duplicate_signup(self, temp_csv_files, sample_config):
         """Test validation fails with duplicate person in signup data."""
-        ly_gifts_path, ty_signup_path = temp_csv_files
+        db_path, ty_signup_path = temp_csv_files
         eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
 
         # Create invalid signup with duplicate person
         invalid_signup = pd.DataFrame(
@@ -112,12 +121,13 @@ class TestLoadData:
         invalid_signup.to_csv(ty_signup_path, index=False)
 
         with pytest.raises(AssertionError):
-            load_data(eligible_people, ly_gifts_path, ty_signup_path)
+            load_data(eligible_people, current_year, ty_signup_path, db_path)
 
     def test_load_data_filters_non_participants(self, temp_csv_files, sample_config):
         """Test that only people with is_secret_santa=True are included."""
-        ly_gifts_path, ty_signup_path = temp_csv_files
+        db_path, ty_signup_path = temp_csv_files
         eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
 
         # Create signup with mixed participation
         filtered_signup = pd.DataFrame(
@@ -129,7 +139,7 @@ class TestLoadData:
         )
         filtered_signup.to_csv(ty_signup_path, index=False)
 
-        ly_gifts, people_signed_up = load_data(eligible_people, ly_gifts_path, ty_signup_path)
+        ly_gifts, people_signed_up = load_data(eligible_people, current_year, ty_signup_path, db_path)
 
         # Should only include Alice, Charlie, Diana (not Bob)
         assert len(people_signed_up) == 3

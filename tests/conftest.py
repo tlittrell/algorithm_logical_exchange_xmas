@@ -11,6 +11,7 @@ def sample_config() -> dict[str, Any]:
     """Sample configuration for testing."""
     return {
         "seed": 123,
+        "current_year": 2025,
         "emails": {
             "Alice": "alice@example.com",
             "Bob": "bob@example.com",
@@ -39,6 +40,7 @@ def sample_ly_gifts() -> pd.DataFrame:
             "giver": ["Alice", "Bob", "Charlie"],
             "gift1": ["Charlie", "Diana", "Bob"],
             "gift2": ["Diana", "Alice", "Alice"],
+            "year": [2024, 2024, 2024],
         }
     )
 
@@ -68,13 +70,13 @@ def temp_config_file(sample_config):
 @pytest.fixture
 def temp_csv_files(sample_ly_gifts, sample_ty_signup):
     """Create temporary CSV files for testing."""
-    ly_gifts_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+    db_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
     ty_signup_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
 
-    sample_ly_gifts.to_csv(ly_gifts_file.name, index=False)
+    sample_ly_gifts.to_csv(db_file.name, index=False)
     sample_ty_signup.to_csv(ty_signup_file.name, index=False)
 
-    return Path(ly_gifts_file.name), Path(ty_signup_file.name)
+    return Path(db_file.name), Path(ty_signup_file.name)
 
 
 @pytest.fixture
