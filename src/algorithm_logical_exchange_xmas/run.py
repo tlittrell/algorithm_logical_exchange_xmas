@@ -257,8 +257,8 @@ def load_gift_preferences(
     disallow_prefs = all_preferences[all_preferences["preference_type"] == "disallow"]
     assign_prefs = all_preferences[all_preferences["preference_type"] == "assign"]
 
-    disallow_pairs = set(zip(disallow_prefs["person"], disallow_prefs["gift"]))
-    assign_pairs = set(zip(assign_prefs["person"], assign_prefs["gift"]))
+    disallow_pairs = set(zip(disallow_prefs["person"], disallow_prefs["gift"], strict=False))
+    assign_pairs = set(zip(assign_prefs["person"], assign_prefs["gift"], strict=False))
 
     conflicts = disallow_pairs & assign_pairs
     assert len(conflicts) == 0, (
