@@ -25,22 +25,26 @@ A constraint-based Secret Santa gift assignment system that uses integer program
 ## Installation
 
 1. Clone the repository:
+
    ```bash
    git clone <repository-url>
    cd algorithm_logical_exchange_xmas
    ```
 
 2. Install dependencies using uv:
+
    ```bash
    uv sync
    ```
 
    Or using pip:
+
    ```bash
    pip install -e .
    ```
 
 3. Install development dependencies (optional, for testing and linting):
+
    ```bash
    uv sync --dev
    ```
@@ -120,6 +124,7 @@ Frank,Diana,Alice
 ```
 
 **Required columns:**
+
 - `giver`: Person who gave gifts (must be unique)
 - `gift1`: First gift recipient
 - `gift2`: Second gift recipient
@@ -139,6 +144,7 @@ Frank,true
 ```
 
 **Required columns:**
+
 - `person`: Participant name
 - `is_secret_santa`: Boolean indicating participation (`true`/`false`)
 
@@ -157,6 +163,7 @@ python -m algorithm_logical_exchange_xmas.run
 ```
 
 The algorithm will:
+
 1. Load and validate configuration from `local_config.toml`
 2. Read input data files
 3. Build and solve the optimization problem
@@ -190,6 +197,7 @@ email: alice@example.com
 Hi Alice!
 
 You're giving gifts to:
+
 1. Eve
 2. Frank
 
@@ -209,12 +217,15 @@ The algorithm uses **Constraint Programming** (specifically, integer programming
 ### Mathematical Formulation
 
 **Decision Variable:**
+
 - `X[i,j]` in {0,1}: Binary variable where 1 means person `i` gives to person `j`
 
 **Objective:**
+
 - Maximize novelty: `sum(X[i,j] * novelty[i,j])` where `novelty` is a random matrix
 
 **Constraints:**
+
 1. **No self-gifting**: `X[i,i] = 0` for all `i`
 2. **Equal distribution**: Each person gives/receives exactly `gifts_per_person` gifts
 3. **Historical**: If person `i` gifted person `j` last year, then `X[i,j] = 0`
@@ -238,6 +249,7 @@ pytest
 ```
 
 With coverage:
+
 ```bash
 pytest --cov=src/algorithm_logical_exchange_xmas --cov-report=html
 ```
@@ -253,16 +265,19 @@ This project uses comprehensive code quality tools:
 - **Pre-commit Hooks**: Automated checks before each commit
 
 Run linting:
+
 ```bash
 ruff check .
 ```
 
 Run formatting:
+
 ```bash
 ruff format .
 ```
 
 Run type checking:
+
 ```bash
 mypy src
 ```
@@ -306,6 +321,7 @@ Contributions are welcome! Please ensure:
 ## Acknowledgments
 
 Built with:
+
 - [CVXPY](https://www.cvxpy.org/) - Convex optimization library
 - [Pandas](https://pandas.pydata.org/) - Data manipulation
 - [DuckDB](https://duckdb.org/) - SQL query engine
