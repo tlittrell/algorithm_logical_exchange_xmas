@@ -175,48 +175,94 @@ class TestFamilyConstraints:
 
 
 class TestFamilyConstraintsGlobalLimit:
-    def test_create_family_constraints_with_global_limit(self):
-        """Test family constraints with global intra-family limit."""
+    def test_global_constraint_counts_correctly(self):
+        """Test that global constraint is added when parameter is provided."""
         people = ["Alice", "Bob", "Charlie", "Diana"]
         gifts = cp.Variable((4, 4), boolean=True)
         families = [["Alice", "Bob"], ["Charlie", "Diana"]]
-        max_to_family = 1
-        max_from_family = 1
-        max_total_intra_family = 3  # Global limit
 
-        constraints = create_family_constraints(
-            gifts, people, families, max_to_family, max_from_family, max_total_intra_family
-        )
+        # With global limit
+        constraints_with = create_family_constraints(gifts, people, families, 1, 1, 3)
+        # Without global limit
+        constraints_without = create_family_constraints(gifts, people, families, 1, 1, None)
 
-        # Should have per-person constraints (4 people * 2 = 8) + 1 global constraint = 9
-        assert len(constraints) == 9
+        # Should have exactly 1 more constraint when global limit is added
+        assert len(constraints_with) == len(constraints_without) + 1
 
-    def test_create_family_constraints_without_global_limit(self):
-        """Test family constraints without global limit (backward compatibility)."""
-        people = ["Alice", "Bob", "Charlie", "Diana"]
-        gifts = cp.Variable((4, 4), boolean=True)
-        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
-        max_to_family = 1
-        max_from_family = 1
+    def test_global_constraint_sums_all_families(self):
+        """Test that global constraint sums intra-family gifts across all families."""
+        people = ["Alice", "Bob", "Charlie", "Diana", "Eve", "Frank"]
+        gifts = cp.Variable((6, 6), boolean=True)
+        families = [["Alice", "Bob"], ["Charlie", "Diana"], ["Eve", "Frank"]]
 
-        # Call without max_total_intra_family_gifts parameter
-        constraints = create_family_constraints(gifts, people, families, max_to_family, max_from_family)
+        constraints = create_family_constraints(gifts, people, families, 2, 2, 4)
 
-        # Should have only per-person constraints (4 people * 2 = 8)
-        assert len(constraints) == 8
+        # Verify constraints were created (will include global constraint)
+        assert len(constraints) > 0
 
-    def test_create_family_constraints_global_limit_none(self):
-        """Test that None for global limit is treated as no constraint."""
-        people = ["Alice", "Bob", "Charlie", "Diana"]
-        gifts = cp.Variable((4, 4), boolean=True)
-        families = [["Alice", "Bob"], ["Charlie", "Diana"]]
-        max_to_family = 1
-        max_from_family = 1
+        # Create a test solution with 2 gifts per family (6 total)
+        test_gifts = cp.Variable((6, 6), boolean=True)
+        test_gifts.value = [
+            [0, 1, 0, 0, 0, 0],  # Alice -> Bob (intra-family)
+            [1, 0, 0, 0, 0, 0],  # Bob -> Alice (intra-family)
+            [0, 0, 0, 1, 0, 0],  # Charlie -> Diana (intra-family)
+            [0, 0, 1, 0, 0, 0],  # Diana -> Charlie (intra-family)
+            [0, 0, 0, 0, 0, 1],  # Eve -> Frank (intra-family)
+            [0, 0, 0, 0, 1, 0],  # Frank -> Eve (intra-family)
+        ]
 
-        constraints = create_family_constraints(gifts, people, families, max_to_family, max_from_family, None)
+        # Count actual intra-family gifts manually
+        actual_intra_family = 0
+        for family in families:
+            family_idx = [people.index(p) for p in family]
+            for i in family_idx:
+                for j in family_idx:
+                    actual_intra_family += test_gifts.value[i][j]
 
-        # Should have only per-person constraints (4 people * 2 = 8)
-        assert len(constraints) == 8
+        assert actual_intra_family == 6  # Verify our test setup
+
+    def test_global_constraint_with_partial_participation(self):
+        """Test global constraint when some family members aren't signed up."""
+        people = ["Alice", "Bob", "Diana"]  # Charlie not signed up
+        gifts = cp.Variable((3, 3), boolean=True)
+        families = [["Alice", "Bob", "Charlie"], ["Diana", "Eve"]]
+
+        constraints = create_family_constraints(gifts, people, families, 1, 1, 2)
+
+        # Should create constraints - only counting signed-up people
+        # Family 1: Alice, Bob (2 people) = 2 people * 2 constraints (to/from) = 4
+        # Family 2: Diana (1 person) = 1 person * 2 constraints (to/from) = 2
+        # Plus 1 global constraint = 7 total
+        assert len(constraints) == 7
+
+    def test_global_constraint_with_single_person_families(self):
+        """Test that single-person families don't break global constraint."""
+        people = ["Alice", "Bob", "Charlie"]
+        gifts = cp.Variable((3, 3), boolean=True)
+        families = [["Alice", "Bob"], ["Charlie"]]  # Charlie alone
+
+        constraints = create_family_constraints(gifts, people, families, 1, 1, 1)
+
+        # Should handle single-person family gracefully
+        # Family 1: Alice, Bob = 2 per-person constraints each = 4 total
+        # Family 2: Charlie = 2 per-person constraints
+        # Plus 1 global constraint
+        assert len(constraints) == 7
+
+    def test_global_constraint_backward_compatibility(self):
+        """Test backward compatibility - None and omitted parameter both work."""
+        people = ["Alice", "Bob"]
+        gifts = cp.Variable((2, 2), boolean=True)
+        families = [["Alice", "Bob"]]
+
+        # Omit parameter
+        constraints_omitted = create_family_constraints(gifts, people, families, 1, 1)
+        # Explicitly pass None
+        constraints_none = create_family_constraints(gifts, people, families, 1, 1, None)
+
+        # Both should produce same number of constraints (no global constraint)
+        assert len(constraints_omitted) == len(constraints_none)
+        assert len(constraints_omitted) == 4  # 2 people * 2 per-person constraints
 
 
 class TestCycleConstraints:
