@@ -152,35 +152,47 @@ class TestLoadData:
 
 class TestLoadGiftPreferences:
     def test_load_gift_preferences_success(self, temp_gift_preferences_file, sample_config):
-        """Test successful gift preferences loading."""
+        """Test successful gift preferences loading with mixed types."""
         eligible_people = sample_config["algorithm"]["eligible_people"]
         current_year = sample_config["current_year"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
 
-        result = load_gift_preferences(eligible_people, current_year, temp_gift_preferences_file)
-
-        # Verify result is a dictionary
-        assert isinstance(result, dict)
-        # Should have Alice disallowing Bob and Bob disallowing Alice
-        assert "Alice" in result
-        assert "Bob" in result
-        assert "Bob" in result["Alice"]
-        assert "Alice" in result["Bob"]
-
-    def test_load_gift_preferences_file_not_found(self, sample_config):
-        """Test that missing file returns empty dict."""
-        eligible_people = sample_config["algorithm"]["eligible_people"]
-        current_year = sample_config["current_year"]
-
-        result = load_gift_preferences(
-            eligible_people, current_year, Path("nonexistent_preferences.csv")
+        disallows, assigns = load_gift_preferences(
+            eligible_people, current_year, gifts_per_person, temp_gift_preferences_file
         )
 
-        # Should return empty dict when file doesn't exist
-        assert result == {}
+        # Verify both are dictionaries
+        assert isinstance(disallows, dict)
+        assert isinstance(assigns, dict)
+
+        # Should have Alice disallowing Bob and Bob disallowing Alice
+        assert "Alice" in disallows
+        assert "Bob" in disallows
+        assert "Bob" in disallows["Alice"]
+        assert "Alice" in disallows["Bob"]
+
+        # Should have Charlie assigned to Diana
+        assert "Charlie" in assigns
+        assert "Diana" in assigns["Charlie"]
+
+    def test_load_gift_preferences_file_not_found(self, sample_config):
+        """Test that missing file returns empty dicts."""
+        eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
+
+        disallows, assigns = load_gift_preferences(
+            eligible_people, current_year, gifts_per_person, Path("nonexistent_preferences.csv")
+        )
+
+        # Should return empty dicts when file doesn't exist
+        assert disallows == {}
+        assert assigns == {}
 
     def test_load_gift_preferences_no_current_year_data(self, sample_config):
-        """Test that no data for current year returns empty dict."""
+        """Test that no data for current year returns empty dicts."""
         eligible_people = sample_config["algorithm"]["eligible_people"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
         current_year = 2030  # Year with no data
 
         # Create preferences file with different year
@@ -197,15 +209,19 @@ class TestLoadGiftPreferences:
         prefs_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
         prefs_data.to_csv(prefs_file.name, index=False)
 
-        result = load_gift_preferences(eligible_people, current_year, Path(prefs_file.name))
+        disallows, assigns = load_gift_preferences(
+            eligible_people, current_year, gifts_per_person, Path(prefs_file.name)
+        )
 
-        # Should return empty dict when no data for current year
-        assert result == {}
+        # Should return empty dicts when no data for current year
+        assert disallows == {}
+        assert assigns == {}
 
     def test_load_gift_preferences_ineligible_person(self, sample_config):
         """Test validation fails with ineligible person in preferences."""
         eligible_people = sample_config["algorithm"]["eligible_people"]
         current_year = sample_config["current_year"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
 
         # Create invalid preferences with ineligible person
         import tempfile
@@ -222,12 +238,13 @@ class TestLoadGiftPreferences:
         invalid_prefs.to_csv(prefs_file.name, index=False)
 
         with pytest.raises(AssertionError, match="Ineligible person"):
-            load_gift_preferences(eligible_people, current_year, Path(prefs_file.name))
+            load_gift_preferences(eligible_people, current_year, gifts_per_person, Path(prefs_file.name))
 
     def test_load_gift_preferences_ineligible_gift(self, sample_config):
         """Test validation fails with ineligible gift recipient in preferences."""
         eligible_people = sample_config["algorithm"]["eligible_people"]
         current_year = sample_config["current_year"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
 
         # Create invalid preferences with ineligible gift recipient
         import tempfile
@@ -244,12 +261,13 @@ class TestLoadGiftPreferences:
         invalid_prefs.to_csv(prefs_file.name, index=False)
 
         with pytest.raises(AssertionError, match="Ineligible gift recipient"):
-            load_gift_preferences(eligible_people, current_year, Path(prefs_file.name))
+            load_gift_preferences(eligible_people, current_year, gifts_per_person, Path(prefs_file.name))
 
     def test_load_gift_preferences_duplicate_pairs(self, sample_config):
         """Test validation fails with duplicate person-gift pairs."""
         eligible_people = sample_config["algorithm"]["eligible_people"]
         current_year = sample_config["current_year"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
 
         # Create invalid preferences with duplicate pairs
         import tempfile
@@ -266,12 +284,13 @@ class TestLoadGiftPreferences:
         invalid_prefs.to_csv(prefs_file.name, index=False)
 
         with pytest.raises(AssertionError, match="Duplicate person-gift pairs"):
-            load_gift_preferences(eligible_people, current_year, Path(prefs_file.name))
+            load_gift_preferences(eligible_people, current_year, gifts_per_person, Path(prefs_file.name))
 
     def test_load_gift_preferences_multiple_disallows(self, sample_config):
         """Test that one person can have multiple disallowed recipients."""
         eligible_people = sample_config["algorithm"]["eligible_people"]
         current_year = sample_config["current_year"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
 
         # Create preferences with Alice disallowing multiple people
         import tempfile
@@ -287,9 +306,89 @@ class TestLoadGiftPreferences:
         prefs_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
         prefs_data.to_csv(prefs_file.name, index=False)
 
-        result = load_gift_preferences(eligible_people, current_year, Path(prefs_file.name))
+        disallows, assigns = load_gift_preferences(
+            eligible_people, current_year, gifts_per_person, Path(prefs_file.name)
+        )
 
         # Should have Alice with list of three disallowed people
-        assert "Alice" in result
-        assert len(result["Alice"]) == 3
-        assert set(result["Alice"]) == {"Bob", "Charlie", "Diana"}
+        assert "Alice" in disallows
+        assert len(disallows["Alice"]) == 3
+        assert set(disallows["Alice"]) == {"Bob", "Charlie", "Diana"}
+        assert assigns == {}  # No assigns in this test
+
+    def test_load_gift_preferences_conflict_detection(self, sample_config):
+        """Test that conflicts between disallow and assign are detected."""
+        eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
+
+        # Create conflicting preferences (Alice both disallows and must assign to Bob)
+        import tempfile
+
+        conflicting_prefs = pd.DataFrame(
+            {
+                "person": ["Alice", "Alice"],
+                "gift": ["Bob", "Bob"],
+                "preference_type": ["disallow", "assign"],
+                "year": [current_year, current_year],
+            }
+        )
+        prefs_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+        conflicting_prefs.to_csv(prefs_file.name, index=False)
+
+        with pytest.raises(AssertionError, match="Conflicting preferences"):
+            load_gift_preferences(eligible_people, current_year, gifts_per_person, Path(prefs_file.name))
+
+    def test_load_gift_preferences_over_constraint(self, sample_config):
+        """Test that over-constraint is detected (more assigns than gifts_per_person)."""
+        eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
+        gifts_per_person = 2  # Only 2 gifts per person
+
+        # Create over-constrained preferences (Alice must assign to 3 people)
+        import tempfile
+
+        over_constrained_prefs = pd.DataFrame(
+            {
+                "person": ["Alice", "Alice", "Alice"],
+                "gift": ["Bob", "Charlie", "Diana"],
+                "preference_type": ["assign", "assign", "assign"],
+                "year": [current_year, current_year, current_year],
+            }
+        )
+        prefs_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+        over_constrained_prefs.to_csv(prefs_file.name, index=False)
+
+        with pytest.raises(AssertionError, match="more assign preferences than gifts_per_person"):
+            load_gift_preferences(eligible_people, current_year, gifts_per_person, Path(prefs_file.name))
+
+    def test_load_gift_preferences_assign_only(self, sample_config):
+        """Test loading assign preferences only."""
+        eligible_people = sample_config["algorithm"]["eligible_people"]
+        current_year = sample_config["current_year"]
+        gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
+
+        # Create assign-only preferences
+        import tempfile
+
+        assign_prefs = pd.DataFrame(
+            {
+                "person": ["Alice", "Bob"],
+                "gift": ["Charlie", "Diana"],
+                "preference_type": ["assign", "assign"],
+                "year": [current_year, current_year],
+            }
+        )
+        prefs_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+        assign_prefs.to_csv(prefs_file.name, index=False)
+
+        disallows, assigns = load_gift_preferences(
+            eligible_people, current_year, gifts_per_person, Path(prefs_file.name)
+        )
+
+        # Should have no disallows but two assigns
+        assert disallows == {}
+        assert "Alice" in assigns
+        assert "Bob" in assigns
+        assert "Charlie" in assigns["Alice"]
+        assert "Diana" in assigns["Bob"]

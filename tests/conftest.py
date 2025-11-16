@@ -89,13 +89,13 @@ def temp_output_dir():
 
 @pytest.fixture
 def sample_gift_preferences() -> pd.DataFrame:
-    """Sample gift preferences data."""
+    """Sample gift preferences data with mixed disallow and assign types."""
     return pd.DataFrame(
         {
-            "person": ["Alice", "Bob"],
-            "gift": ["Bob", "Alice"],
-            "preference_type": ["disallow", "disallow"],
-            "year": [2025, 2025],
+            "person": ["Alice", "Bob", "Charlie"],
+            "gift": ["Bob", "Alice", "Diana"],
+            "preference_type": ["disallow", "disallow", "assign"],
+            "year": [2025, 2025, 2025],
         }
     )
 

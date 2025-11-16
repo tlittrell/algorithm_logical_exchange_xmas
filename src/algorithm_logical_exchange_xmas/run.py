@@ -181,75 +181,110 @@ def load_data(
 def load_gift_preferences(
     eligible_people: list[str],
     current_year: int,
+    gifts_per_person: int,
     preferences_db_path: Path = Path("data/gift_preferences.csv"),
-) -> dict[str, list[str]]:
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
     """Load gift preferences from database for current year.
 
-    Queries the gift preferences database for current year's 'disallow' preferences
-    and returns them in a dictionary format compatible with manual_disallows.
+    Queries the gift preferences database for current year's 'disallow' and 'assign'
+    preferences and returns them in dictionary formats.
 
     Args:
         eligible_people: List of all people eligible to participate in Secret Santa.
         current_year: The year for which preferences are being loaded.
+        gifts_per_person: Number of gifts each person gives (for validation).
         preferences_db_path: Path to the gift preferences database CSV file containing
             historical preference data. Must have columns: "person", "gift",
             "preference_type", "year". Defaults to "data/gift_preferences.csv".
 
     Returns:
-        Dictionary mapping person names to lists of people they cannot give to.
-        Empty dictionary if no preferences exist for the current year.
+        Tuple of two dictionaries:
+            - manual_disallows: person names to lists of people they cannot give to
+            - manual_assigns: person names to lists of people they must give to
+        Returns empty dicts if no preferences exist for the current year.
 
     Raises:
-        AssertionError: If validation fails (e.g., ineligible person/gift or duplicate
-            person-gift pairs).
+        AssertionError: If validation fails (e.g., ineligible person/gift, duplicate
+            person-gift pairs, conflicts between disallow/assign, or over-constraint).
         FileNotFoundError: If preferences database file doesn't exist.
         KeyError: If required columns are missing from the file.
         duckdb.Error: If database query fails.
     """
     logging.info(f"Reading gift preferences from database (year {current_year})")
 
-    # Check if file exists first - if not, return empty dict
+    # Check if file exists first - if not, return empty dicts
     if not preferences_db_path.exists():
         logging.info("No gift preferences file found, returning empty preferences")
-        return {}
+        return {}, {}
 
-    preferences = duckdb.sql(
+    # Query all preferences for current year (both disallow and assign)
+    all_preferences = duckdb.sql(
         """
-        SELECT person, gift
+        SELECT person, gift, preference_type
         FROM read_csv_auto(?)
-        WHERE year = ? AND preference_type = 'disallow'
+        WHERE year = ? AND preference_type IN ('disallow', 'assign')
         """,
         params=[str(preferences_db_path), current_year],
     ).df()
 
-    # If no preferences for this year, return empty dict
-    if len(preferences) == 0:
+    # If no preferences for this year, return empty dicts
+    if len(all_preferences) == 0:
         logging.info("No gift preferences found for current year")
-        return {}
+        return {}, {}
 
     # Validate all persons and gifts are eligible
-    assert set(preferences["person"]).issubset(
+    assert set(all_preferences["person"]).issubset(
         eligible_people
     ), "Ineligible person in gift preferences"
-    assert set(preferences["gift"]).issubset(
+    assert set(all_preferences["gift"]).issubset(
         eligible_people
     ), "Ineligible gift recipient in gift preferences"
 
-    # Check for duplicate person-gift pairs
-    assert not preferences.duplicated(subset=["person", "gift"]).any(), (
-        "Duplicate person-gift pairs in preferences"
+    # Check for duplicate person-gift pairs within each preference type
+    for pref_type in ["disallow", "assign"]:
+        pref_subset = all_preferences[all_preferences["preference_type"] == pref_type]
+        assert not pref_subset.duplicated(subset=["person", "gift"]).any(), (
+            f"Duplicate person-gift pairs in {pref_type} preferences"
+        )
+
+    # Check for conflicts: same person-gift pair in both disallow and assign
+    disallow_prefs = all_preferences[all_preferences["preference_type"] == "disallow"]
+    assign_prefs = all_preferences[all_preferences["preference_type"] == "assign"]
+
+    disallow_pairs = set(zip(disallow_prefs["person"], disallow_prefs["gift"]))
+    assign_pairs = set(zip(assign_prefs["person"], assign_prefs["gift"]))
+
+    conflicts = disallow_pairs & assign_pairs
+    assert len(conflicts) == 0, (
+        f"Conflicting preferences (both disallow and assign): {conflicts}"
     )
 
-    # Convert to dictionary format
+    # Validate no person has more assigns than gifts_per_person
+    assign_counts = assign_prefs["person"].value_counts()
+    over_constrained = assign_counts[assign_counts > gifts_per_person]
+    assert len(over_constrained) == 0, (
+        f"People with more assign preferences than gifts_per_person ({gifts_per_person}): "
+        f"{over_constrained.to_dict()}"
+    )
+
+    # Convert to dictionary formats
     manual_disallows: dict[str, list[str]] = {}
-    for _, row in preferences.iterrows():
+    for _, row in disallow_prefs.iterrows():
         person = row["person"]
         gift = row["gift"]
         if person not in manual_disallows:
             manual_disallows[person] = []
         manual_disallows[person].append(gift)
 
-    return manual_disallows
+    manual_assigns: dict[str, list[str]] = {}
+    for _, row in assign_prefs.iterrows():
+        person = row["person"]
+        gift = row["gift"]
+        if person not in manual_assigns:
+            manual_assigns[person] = []
+        manual_assigns[person].append(gift)
+
+    return manual_disallows, manual_assigns
 
 
 def create_basic_constraints(
@@ -462,12 +497,47 @@ def create_manual_disallow_constraints(
     return constraints
 
 
+def create_manual_assign_constraints(
+    gifts: cp.Variable, people_signed_up: list[str], manual_assigns: dict[str, list[str]]
+) -> list[cp.Constraint]:
+    """Create constraints for manual assigns.
+
+    Applies custom requirements specified in the configuration to force
+    specific gift assignments based on user-defined rules.
+
+    Args:
+        gifts: CVXPY boolean variable matrix (nxn) where gifts[i,j]=1 means
+            person i gives to person j.
+        people_signed_up: List of participant names currently signed up.
+        manual_assigns: Dictionary mapping giver names to lists of people
+            they must gift to (e.g., {"Alice": ["Bob"], "Charlie": ["Diana"]}).
+
+    Returns:
+        List of CVXPY constraints where gifts[i,j]=1 for all manually assigned
+        (i,j) pairs (only applied if both participants are signed up).
+    """
+    constraints = []
+
+    # Add any manual assignments (e.g. specific person must get specific recipient)
+    for person, assign_list in manual_assigns.items():
+        if person not in people_signed_up:
+            continue
+
+        person_idx = people_signed_up.index(person)
+        for p2 in [p for p in assign_list if p in people_signed_up]:
+            p2_idx = people_signed_up.index(p2)
+            constraints.append(gifts[person_idx, p2_idx] == 1)
+
+    return constraints
+
+
 def solve_optimization_problem(  # noqa: PLR0913
     people_signed_up: list[str],
     ly_gifts: pd.DataFrame,
     couples: list[list[str]],
     families: list[list[str]],
     manual_disallows: dict[str, list[str]],
+    manual_assigns: dict[str, list[str]],
     gifts_per_person: int,
     max_gifts_to_family: int,
     max_gifts_from_family: int,
@@ -487,6 +557,7 @@ def solve_optimization_problem(  # noqa: PLR0913
         couples: List of two-element lists containing partner names.
         families: List of lists, each containing family member names.
         manual_disallows: Dictionary mapping giver names to lists of disallowed recipients.
+        manual_assigns: Dictionary mapping giver names to lists of required recipients.
         gifts_per_person: Number of gifts each person gives and receives.
         max_gifts_to_family: Maximum gifts a person can give within their family.
         max_gifts_from_family: Maximum gifts a person can receive from their family.
@@ -507,6 +578,7 @@ def solve_optimization_problem(  # noqa: PLR0913
         ...     couples=[["Alice", "Bob"]],
         ...     families=[["Alice", "Bob"], ["Charlie"]],
         ...     manual_disallows={},
+        ...     manual_assigns={},
         ...     gifts_per_person=1,
         ...     max_gifts_to_family=0,
         ...     max_gifts_from_family=0,
@@ -538,6 +610,7 @@ def solve_optimization_problem(  # noqa: PLR0913
     )
     constraints.extend(create_cycle_constraints(gifts, people_signed_up))
     constraints.extend(create_manual_disallow_constraints(gifts, people_signed_up, manual_disallows))
+    constraints.extend(create_manual_assign_constraints(gifts, people_signed_up, manual_assigns))
 
     ### Create the integer programming problem
     problem = cp.Problem(objective, constraints)
@@ -759,9 +832,10 @@ def main() -> None:
     )
 
     # Load gift preferences
-    manual_disallows = load_gift_preferences(
+    manual_disallows, manual_assigns = load_gift_preferences(
         eligible_people,
         current_year,
+        gifts_per_person,
         preferences_db_path=Path("data/gift_preferences.csv"),
     )
 
@@ -772,6 +846,7 @@ def main() -> None:
         couples,
         families,
         manual_disallows,
+        manual_assigns,
         gifts_per_person,
         max_gifts_to_family,
         max_gifts_from_family,

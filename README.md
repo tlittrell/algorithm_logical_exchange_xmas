@@ -162,19 +162,32 @@ A historical database containing gift preferences for all years. The algorithm q
 
 ```csv
 person,gift,preference_type,year
-Ariel,Mark,disallow,2025
-Ariel,Thomas,disallow,2025
-Ariel,Graham,disallow,2025
+Alice,Bob,disallow,2024
+Alice,Charlie,disallow,2024
+Diana,Eve,assign,2025
+Frank,Grace,assign,2025
 ```
 
 **Required columns:**
 
 - `person`: Person who has the preference (the giver)
 - `gift`: Person who would receive the gift (the recipient)
-- `preference_type`: Type of preference (currently only `disallow` is supported)
+- `preference_type`: Type of preference - either `disallow` or `assign`
 - `year`: Year the preference applies to (integer)
 
-**Note:** Only preferences with `preference_type = 'disallow'` for the current year will be applied. The preference type column is designed to support future enhancement with additional preference types (e.g., `prefer`, `require`). Each person-gift pair should only appear once per year.
+**Preference Types:**
+
+- **`disallow`**: Person cannot give to the specified recipient (creates constraint `gifts[person, recipient] = 0`)
+- **`assign`**: Person must give to the specified recipient (creates constraint `gifts[person, recipient] = 1`)
+
+**Validation Rules:**
+
+- Each person-gift pair can only appear once per year
+- A person cannot have both `disallow` and `assign` for the same recipient (conflict detection)
+- A person cannot have more `assign` preferences than `gifts_per_person` (over-constraint detection)
+- All persons and gifts must be in the eligible_people list
+
+**Note:** Only preferences for the current year will be applied. The system is designed to support future preference types (e.g., `prefer`, `avoid`).
 
 ## Usage
 

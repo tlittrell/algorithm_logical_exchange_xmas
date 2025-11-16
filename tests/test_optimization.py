@@ -15,6 +15,7 @@ class TestSolveOptimizationProblem:
         couples = []  # No couple constraints for simplicity
         families = [["Alice", "Bob", "Charlie", "Diana"]]  # All in one family
         manual_disallows = {}
+        manual_assigns = {}
         gifts_per_person = 1  # Each person gives/receives 1 gift
         max_gifts_to_family = 4  # Allow gifts within family
         max_gifts_from_family = 4
@@ -27,6 +28,7 @@ class TestSolveOptimizationProblem:
             couples,
             families,
             manual_disallows,
+            manual_assigns,
             gifts_per_person,
             max_gifts_to_family,
             max_gifts_from_family,
@@ -49,6 +51,7 @@ class TestSolveOptimizationProblem:
         couples = []
         families = [["Alice", "Bob", "Charlie", "Diana"]]
         manual_disallows = {}
+        manual_assigns = {}
         gifts_per_person = 1
         max_gifts_to_family = 4
         max_gifts_from_family = 4
@@ -62,6 +65,7 @@ class TestSolveOptimizationProblem:
             couples,
             families,
             manual_disallows,
+            manual_assigns,
             gifts_per_person,
             max_gifts_to_family,
             max_gifts_from_family,
@@ -75,6 +79,7 @@ class TestSolveOptimizationProblem:
             couples,
             families,
             manual_disallows,
+            manual_assigns,
             gifts_per_person,
             max_gifts_to_family,
             max_gifts_from_family,
@@ -92,6 +97,7 @@ class TestSolveOptimizationProblem:
         couples = []
         families = [["Alice", "Bob", "Charlie", "Diana"]]
         manual_disallows = {}
+        manual_assigns = {}
         gifts_per_person = 1
         max_gifts_to_family = 4
         max_gifts_from_family = 4
@@ -104,6 +110,7 @@ class TestSolveOptimizationProblem:
             couples,
             families,
             manual_disallows,
+            manual_assigns,
             gifts_per_person,
             max_gifts_to_family,
             max_gifts_from_family,
@@ -117,6 +124,7 @@ class TestSolveOptimizationProblem:
             couples,
             families,
             manual_disallows,
+            manual_assigns,
             gifts_per_person,
             max_gifts_to_family,
             max_gifts_from_family,
@@ -134,6 +142,7 @@ class TestSolveOptimizationProblem:
         couples = []
         families = [["Alice"], ["Bob"]]  # Each person in separate family
         manual_disallows = {"Alice": ["Bob"], "Bob": ["Alice"]}  # No one can give to anyone
+        manual_assigns = {}
         gifts_per_person = 1
         max_gifts_to_family = 0  # Can't give within family
         max_gifts_from_family = 0
@@ -148,6 +157,7 @@ class TestSolveOptimizationProblem:
                 couples,
                 families,
                 manual_disallows,
+                manual_assigns,
                 gifts_per_person,
                 max_gifts_to_family,
                 max_gifts_from_family,
