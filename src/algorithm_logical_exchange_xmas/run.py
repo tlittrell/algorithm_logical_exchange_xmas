@@ -1,3 +1,30 @@
+"""Secret Santa gift assignment optimization algorithm.
+
+This module implements a constraint-based integer programming solution for assigning
+Secret Santa gifts. It uses CVXPY to solve an optimization problem that maximizes
+assignment novelty while respecting multiple constraints:
+
+- No self-gifting or repeat gifts from last year
+- Equal distribution (everyone gives/receives the same number of gifts)
+- Couple constraints (partners can't gift each other or the same people)
+- Family limits (configurable within-family gifting restrictions)
+- Cycle prevention (if A→B, then B cannot→A)
+- Manual disallow lists for custom restrictions
+
+The algorithm loads configuration from a TOML file, reads historical and current
+participant data, builds and solves the optimization problem, then generates
+CSV assignments and personalized Markdown messages.
+
+Example:
+    Run the algorithm from the command line::
+
+        $ uv run python src/algorithm_logical_exchange_xmas/run.py
+
+    Or as a module::
+
+        $ uv run python -m algorithm_logical_exchange_xmas.run
+"""
+
 import itertools
 import logging
 import tomllib
@@ -15,14 +42,51 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 
 def load_config(config_path: Path = Path("local_config.toml")) -> dict[str, Any]:
-    """Load configuration from TOML file."""
+    """Load configuration from TOML file.
+
+    Reads and parses a TOML configuration file containing algorithm parameters,
+    eligible participants, relationship constraints, and email addresses.
+
+    Args:
+        config_path: Path to the TOML configuration file. Defaults to
+            "local_config.toml" in the current working directory.
+
+    Returns:
+        A dictionary containing the parsed configuration with keys:
+            - "seed": Random seed for reproducibility
+            - "algorithm": Algorithm configuration (people, couples, families, etc.)
+            - "emails": Mapping of participant names to email addresses
+            - "manual_disallows": Manual gift assignment restrictions
+
+    Raises:
+        FileNotFoundError: If the configuration file doesn't exist.
+        tomllib.TOMLDecodeError: If the TOML file is malformed.
+    """
     logging.info("Reading in config")
     with config_path.open("rb") as file:
         return tomllib.load(file)
 
 
 def validate_config(config: dict[str, Any]) -> None:
-    """Validate configuration data for consistency and completeness."""
+    """Validate configuration data for consistency and completeness.
+
+    Performs comprehensive validation checks on the configuration to ensure:
+    - No duplicate entries in eligible people, couples, or families
+    - All people in couples/families are in the eligible people list
+    - Every eligible person is assigned to exactly one family
+    - Seed is a non-negative integer
+
+    Args:
+        config: Configuration dictionary loaded from TOML file, containing
+            "algorithm" (with eligible_people, couples, families) and "seed" keys.
+
+    Returns:
+        None. Validation is performed via assertions.
+
+    Raises:
+        AssertionError: If any validation check fails, with a descriptive message
+            indicating which constraint was violated.
+    """
     logging.info("Validating config")
 
     algorithm_config = config["algorithm"]
@@ -54,7 +118,31 @@ def load_data(
     ly_gifts_path: Path = Path("data/input/ly_gifts.csv"),
     ty_signup_path: Path = Path("data/input/ty_signup.csv"),
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Load last year's gifts and this year's signups."""
+    """Load last year's gifts and this year's signups.
+
+    Reads historical gift assignment data and current year signup information,
+    validating that all participants are eligible and data integrity is maintained.
+
+    Args:
+        eligible_people: List of all people eligible to participate in Secret Santa.
+        ly_gifts_path: Path to CSV file containing last year's gift assignments.
+            Must have columns: "giver", "gift1", "gift2". Defaults to
+            "data/input/ly_gifts.csv".
+        ty_signup_path: Path to CSV file containing this year's signup data.
+            Must have columns: "person", "is_secret_santa". Defaults to
+            "data/input/ty_signup.csv".
+
+    Returns:
+        A tuple containing:
+            - DataFrame with last year's gift assignments (columns: giver, gift1, gift2)
+            - List of people who signed up to participate this year
+
+    Raises:
+        AssertionError: If data validation fails (e.g., duplicate givers, ineligible
+            participants, or duplicate signups).
+        FileNotFoundError: If either input CSV file doesn't exist.
+        KeyError: If required columns are missing from the CSV files.
+    """
     logging.info("Reading in last year gifts")
     ly_gifts = pd.read_csv(ly_gifts_path)
     assert ly_gifts["giver"].is_unique
@@ -74,7 +162,23 @@ def load_data(
 def create_basic_constraints(
     gifts: cp.Variable, people_signed_up: list[str], gifts_per_person: int
 ) -> list[cp.Constraint]:
-    """Create basic constraints: no self-gifting and gift count constraints."""
+    """Create basic constraints: no self-gifting and gift count constraints.
+
+    Establishes fundamental rules that everyone gives and receives the same number
+    of gifts, and no one can gift themselves.
+
+    Args:
+        gifts: CVXPY boolean variable matrix (nxn) where gifts[i,j]=1 means
+            person i gives to person j.
+        people_signed_up: List of participant names (ordered, length n).
+        gifts_per_person: Number of gifts each person should give and receive.
+
+    Returns:
+        List of CVXPY constraints enforcing:
+            - No self-gifting: gifts[i,i] = 0 for all i
+            - Equal giving: Each person gives exactly gifts_per_person gifts
+            - Equal receiving: Each person receives exactly gifts_per_person gifts
+    """
     constraints = []
     n_people = len(people_signed_up)
 
@@ -91,7 +195,22 @@ def create_basic_constraints(
 def create_last_year_constraints(
     gifts: cp.Variable, people_signed_up: list[str], ly_gifts: pd.DataFrame
 ) -> list[cp.Constraint]:
-    """Create constraints to prevent repeating last year's assignments."""
+    """Create constraints to prevent repeating last year's assignments.
+
+    Ensures no participant receives gifts from the same person two years in a row,
+    maintaining novelty and preventing patterns.
+
+    Args:
+        gifts: CVXPY boolean variable matrix (nxn) where gifts[i,j]=1 means
+            person i gives to person j.
+        people_signed_up: List of participant names currently signed up this year.
+        ly_gifts: DataFrame with last year's assignments, containing columns:
+            "giver", "gift1", "gift2".
+
+    Returns:
+        List of CVXPY constraints where gifts[i,j]=0 if person i gave to person j
+        last year (applies only to participants signed up both years).
+    """
     constraints = []
 
     # No repeats of last year
@@ -115,7 +234,24 @@ def create_last_year_constraints(
 def create_couple_constraints(
     gifts: cp.Variable, people_signed_up: list[str], couples: list[list[str]], max_couple_overlap: int
 ) -> list[cp.Constraint]:
-    """Create constraints for couples."""
+    """Create constraints for couples.
+
+    Prevents partners from gifting each other and limits how many people both
+    partners can gift, ensuring variety in couple gift assignments.
+
+    Args:
+        gifts: CVXPY boolean variable matrix (nxn) where gifts[i,j]=1 means
+            person i gives to person j.
+        people_signed_up: List of participant names currently signed up.
+        couples: List of two-element lists, each containing partner names.
+        max_couple_overlap: Maximum number of people both partners can gift
+            (typically 0 or 1 to ensure variety).
+
+    Returns:
+        List of CVXPY constraints enforcing:
+            - Partners cannot gift each other (gifts[i,j]=0 and gifts[j,i]=0)
+            - Limited overlap in gift recipients between partners
+    """
     constraints = []
     n_people = len(people_signed_up)
 
@@ -141,7 +277,25 @@ def create_family_constraints(
     max_gifts_to_family: int,
     max_gifts_from_family: int,
 ) -> list[cp.Constraint]:
-    """Create constraints to limit gifts within families."""
+    """Create constraints to limit gifts within families.
+
+    Prevents excessive within-family gifting to encourage cross-family exchanges
+    and maintain variety in gift assignments.
+
+    Args:
+        gifts: CVXPY boolean variable matrix (nxn) where gifts[i,j]=1 means
+            person i gives to person j.
+        people_signed_up: List of participant names currently signed up.
+        families: List of lists, each containing names of family members.
+        max_gifts_to_family: Maximum number of gifts a person can give to their
+            own family members.
+        max_gifts_from_family: Maximum number of gifts a person can receive from
+            their own family members.
+
+    Returns:
+        List of CVXPY constraints limiting within-family gift exchanges for
+        each participant based on the specified maximums.
+    """
     constraints = []
 
     # Limit gifts within families
@@ -156,7 +310,20 @@ def create_family_constraints(
 
 
 def create_cycle_constraints(gifts: cp.Variable, people_signed_up: list[str]) -> list[cp.Constraint]:
-    """Create constraints to prevent cycles (A->B and B->A)."""
+    """Create constraints to prevent cycles (A->B and B->A).
+
+    Prevents reciprocal gifting where person A gifts to person B and person B
+    gifts back to person A, ensuring more interesting gift patterns.
+
+    Args:
+        gifts: CVXPY boolean variable matrix (nxn) where gifts[i,j]=1 means
+            person i gives to person j.
+        people_signed_up: List of participant names currently signed up.
+
+    Returns:
+        List of CVXPY constraints enforcing that for any pair (i,j),
+        at most one direction of gifting can occur: gifts[i,j] + gifts[j,i] <= 1.
+    """
     constraints = []
 
     # No cycles e.g. if person 1 gives to person 2 then person 2 can't give to person 1
@@ -171,7 +338,22 @@ def create_cycle_constraints(gifts: cp.Variable, people_signed_up: list[str]) ->
 def create_manual_disallow_constraints(
     gifts: cp.Variable, people_signed_up: list[str], manual_disallows: dict[str, list[str]]
 ) -> list[cp.Constraint]:
-    """Create constraints for manual disallows."""
+    """Create constraints for manual disallows.
+
+    Applies custom restrictions specified in the configuration to prevent
+    specific gift assignments based on user-defined rules.
+
+    Args:
+        gifts: CVXPY boolean variable matrix (nxn) where gifts[i,j]=1 means
+            person i gives to person j.
+        people_signed_up: List of participant names currently signed up.
+        manual_disallows: Dictionary mapping giver names to lists of people
+            they cannot gift to (e.g., {"Alice": ["Bob", "Charlie"]}).
+
+    Returns:
+        List of CVXPY constraints where gifts[i,j]=0 for all manually disallowed
+        (i,j) pairs (only applied if both participants are signed up).
+    """
     constraints = []
 
     # Add any manual blocks (e.g. new person doesn't get other outlaws)
@@ -199,7 +381,47 @@ def solve_optimization_problem(  # noqa: PLR0913
     max_couple_overlap: int,
     seed: int,
 ) -> cp.Variable:
-    """Set up and solve the optimization problem."""
+    """Set up and solve the optimization problem.
+
+    Constructs and solves an integer programming problem that finds an optimal
+    Secret Santa gift assignment matrix. The objective maximizes a random novelty
+    matrix subject to all constraints, ensuring fair, diverse, and interesting
+    gift assignments.
+
+    Args:
+        people_signed_up: List of participant names (defines matrix dimensions).
+        ly_gifts: DataFrame with last year's assignments (columns: giver, gift1, gift2).
+        couples: List of two-element lists containing partner names.
+        families: List of lists, each containing family member names.
+        manual_disallows: Dictionary mapping giver names to lists of disallowed recipients.
+        gifts_per_person: Number of gifts each person gives and receives.
+        max_gifts_to_family: Maximum gifts a person can give within their family.
+        max_gifts_from_family: Maximum gifts a person can receive from their family.
+        max_couple_overlap: Maximum people both partners in a couple can gift.
+        seed: Random seed for reproducible novelty matrix generation.
+
+    Returns:
+        CVXPY Variable containing the optimal gift assignment matrix (nxn boolean),
+        where gifts.value[i,j]=1 means person i gives to person j.
+
+    Raises:
+        ValueError: If no optimal solution exists (constraints are infeasible).
+
+    Example:
+        >>> gifts = solve_optimization_problem(
+        ...     people_signed_up=["Alice", "Bob", "Charlie"],
+        ...     ly_gifts=ly_df,
+        ...     couples=[["Alice", "Bob"]],
+        ...     families=[["Alice", "Bob"], ["Charlie"]],
+        ...     manual_disallows={},
+        ...     gifts_per_person=1,
+        ...     max_gifts_to_family=0,
+        ...     max_gifts_from_family=0,
+        ...     max_couple_overlap=0,
+        ...     seed=42
+        ... )
+        >>> print(gifts.value)  # Optimal assignment matrix
+    """
     n_people = len(people_signed_up)
 
     # Set up random generator with seed
@@ -245,7 +467,31 @@ def solve_optimization_problem(  # noqa: PLR0913
 def process_results(
     gifts: cp.Variable, people_signed_up: list[str], ly_gifts: pd.DataFrame, gifts_per_person: int
 ) -> pd.DataFrame:
-    """Process optimization results into a DataFrame."""
+    """Process optimization results into a DataFrame.
+
+    Converts the optimal gift assignment matrix into a human-readable DataFrame
+    with giver-receiver pairs, and validates that all constraints are satisfied.
+
+    Args:
+        gifts: CVXPY Variable with solved optimal assignment matrix (nxn boolean),
+            where gifts.value[i,j]=1 means person i gives to person j.
+        people_signed_up: List of participant names (ordered, same as used in optimization).
+        ly_gifts: DataFrame with last year's assignments for validation
+            (columns: giver, gift1, gift2).
+        gifts_per_person: Expected number of gifts each person gives/receives (for validation).
+
+    Returns:
+        DataFrame with columns:
+            - giver: Person giving gifts
+            - gift1: First recipient
+            - gift2: Second recipient
+            - gift1_ly: First recipient last year (for comparison)
+            - gift2_ly: Second recipient last year (for comparison)
+
+    Raises:
+        AssertionError: If validation fails (e.g., unequal distribution, repeat
+            gifts from last year, missing participants).
+    """
     giver = []
     gift1 = []
     gift2 = []
@@ -297,7 +543,30 @@ def generate_output(
     assignments_path: Path = Path("data/output/assignments.csv"),
     messages_path: Path = Path("data/output/secret_santa_messages.md"),
 ) -> None:
-    """Generate and save output files."""
+    """Generate and save output files.
+
+    Creates two output files: a CSV with all gift assignments and a Markdown file
+    with personalized messages for each participant including their email addresses.
+
+    Args:
+        result: DataFrame containing gift assignments with columns:
+            giver, gift1, gift2 (and optionally gift1_ly, gift2_ly).
+        message_template: String template for personalized messages with placeholders
+            {giver}, {gift1}, {gift2} that will be filled for each participant.
+        emails: Dictionary mapping participant names to email addresses.
+        assignments_path: Path where the assignments CSV will be saved.
+            Defaults to "data/output/assignments.csv".
+        messages_path: Path where the Markdown messages will be saved.
+            Defaults to "data/output/secret_santa_messages.md".
+
+    Returns:
+        None. Files are written to disk at the specified paths.
+
+    Raises:
+        IOError: If output files cannot be written (e.g., permission denied,
+            directory doesn't exist).
+        KeyError: If a participant's email is missing from the emails dictionary.
+    """
     logging.info("Writing out results")
     result.to_csv(assignments_path, index=False)
 
@@ -320,7 +589,34 @@ def generate_output(
 
 
 def main() -> None:
-    """Main function to orchestrate the Secret Santa algorithm."""
+    """Main function to orchestrate the Secret Santa algorithm.
+
+    Executes the complete Secret Santa gift assignment workflow:
+    1. Loads and validates configuration from TOML file
+    2. Loads historical and current participant data
+    3. Solves the constraint optimization problem
+    4. Processes and validates results
+    5. Generates output CSV and personalized messages
+
+    This function serves as the entry point when running the module directly.
+
+    Returns:
+        None. Output files are created in data/output/ directory.
+
+    Raises:
+        FileNotFoundError: If configuration or input data files are missing.
+        ValueError: If the optimization problem has no feasible solution.
+        AssertionError: If configuration or results fail validation checks.
+
+    Example:
+        Run from command line::
+
+            $ uv run python src/algorithm_logical_exchange_xmas/run.py
+
+        Or as a module::
+
+            $ uv run python -m algorithm_logical_exchange_xmas.run
+    """
     # Load and validate configuration
     config = load_config()
     validate_config(config)
