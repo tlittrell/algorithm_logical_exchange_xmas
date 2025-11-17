@@ -119,3 +119,16 @@ class TestValidateConfig:
 
         with pytest.raises(AssertionError, match="must be non-negative"):
             validate_config(sample_config)
+
+    def test_validate_config_zero_max_total_intra_family_gifts(self, sample_config):
+        """Test that zero is a valid value (no intra-family gifts allowed)."""
+        sample_config["algorithm"]["max_total_intra_family_gifts"] = 0
+        # Should not raise - zero is valid (means no intra-family gifts)
+        validate_config(sample_config)
+
+    def test_validate_config_float_max_total_intra_family_gifts(self, sample_config):
+        """Test validation fails with float value."""
+        sample_config["algorithm"]["max_total_intra_family_gifts"] = 3.5
+
+        with pytest.raises(AssertionError, match="must be an integer"):
+            validate_config(sample_config)

@@ -175,8 +175,78 @@ class TestSolveOptimizationProblem:
                 seed,
             )
 
-    def test_solve_optimization_problem_with_global_family_limit(self):
-        """Test optimization with global intra-family gift limit."""
+    def test_global_family_limit_actually_restricts_solution(self):
+        """CRITICAL: Prove the global constraint actively restricts the solution."""
+        # Use more people and gifts_per_person=2 to create scenario where
+        # intra-family gifts naturally occur
+        people = ["Alice", "Bob", "Charlie", "Diana", "Eve", "Frank"]
+        ly_gifts = pd.DataFrame(columns=["giver", "gift1", "gift2"])
+        couples = []
+        families = [["Alice", "Bob"], ["Charlie", "Diana"], ["Eve", "Frank"]]
+        manual_disallows = {}
+        manual_assigns = {}
+        gifts_per_person = 2  # Each person gives 2 gifts
+        max_gifts_to_family = 2  # Allow intra-family gifts per person
+        max_gifts_from_family = 2
+        max_couple_overlap = 2
+        seed = 123
+
+        # Run WITHOUT global constraint
+        gifts_unconstrained = solve_optimization_problem(
+            people,
+            ly_gifts,
+            couples,
+            families,
+            manual_disallows,
+            manual_assigns,
+            gifts_per_person,
+            max_gifts_to_family,
+            max_gifts_from_family,
+            max_couple_overlap,
+            None,  # No global limit
+            seed,
+        )
+
+        # Run WITH restrictive global constraint
+        gifts_constrained = solve_optimization_problem(
+            people,
+            ly_gifts,
+            couples,
+            families,
+            manual_disallows,
+            manual_assigns,
+            gifts_per_person,
+            max_gifts_to_family,
+            max_gifts_from_family,
+            max_couple_overlap,
+            2,  # Restrictive global limit (vs natural ~6)
+            seed,
+        )
+
+        # Count intra-family gifts in both solutions
+        def count_intra_family(gift_matrix, families_list, people_list):
+            total = 0
+            for family in families_list:
+                family_idx = [people_list.index(p) for p in family]
+                for i in family_idx:
+                    for j in family_idx:
+                        if gift_matrix.value[i, j] == 1:
+                            total += 1
+            return total
+
+        unconstrained_count = count_intra_family(gifts_unconstrained, families, people)
+        constrained_count = count_intra_family(gifts_constrained, families, people)
+
+        # CRITICAL ASSERTION: The constraint must actually REDUCE intra-family gifts
+        assert constrained_count < unconstrained_count, (
+            f"Global constraint did not restrict solution: "
+            f"unconstrained={unconstrained_count}, constrained={constrained_count}"
+        )
+        # Verify the constraint is satisfied
+        assert constrained_count <= 2
+
+    def test_global_family_limit_zero(self):
+        """Test that max_total=0 forces all gifts to be cross-family."""
         people = ["Alice", "Bob", "Charlie", "Diana"]
         ly_gifts = pd.DataFrame(columns=["giver", "gift1", "gift2"])
         couples = []
@@ -186,9 +256,94 @@ class TestSolveOptimizationProblem:
         gifts_per_person = 1
         max_gifts_to_family = 1
         max_gifts_from_family = 1
-        max_total_intra_family_gifts = 1  # Very restrictive global limit
         max_couple_overlap = 1
-        seed = 123
+        seed = 456
+
+        gifts = solve_optimization_problem(
+            people,
+            ly_gifts,
+            couples,
+            families,
+            manual_disallows,
+            manual_assigns,
+            gifts_per_person,
+            max_gifts_to_family,
+            max_gifts_from_family,
+            max_couple_overlap,
+            0,  # NO intra-family gifts allowed
+            seed,
+        )
+
+        # Count intra-family gifts
+        family_gifts = 0
+        for family in families:
+            family_idx = [people.index(p) for p in family]
+            for i in family_idx:
+                for j in family_idx:
+                    if gifts.value[i, j] == 1:
+                        family_gifts += 1
+
+        # Must be exactly 0
+        assert family_gifts == 0, f"Expected 0 intra-family gifts, got {family_gifts}"
+
+    def test_global_family_limit_at_boundary(self):
+        """Test constraint at exact boundary (max_total equals natural limit)."""
+        people = ["Alice", "Bob", "Charlie", "Diana", "Eve", "Frank"]
+        ly_gifts = pd.DataFrame(columns=["giver", "gift1", "gift2"])
+        couples = []
+        families = [["Alice", "Bob"], ["Charlie", "Diana"], ["Eve", "Frank"]]
+        manual_disallows = {}
+        manual_assigns = {}
+        gifts_per_person = 1
+        max_gifts_to_family = 1
+        max_gifts_from_family = 1
+        max_couple_overlap = 1
+        seed = 789
+
+        # With 3 families of 2, per-person max=1, natural limit is 3 intra-family gifts
+        gifts = solve_optimization_problem(
+            people,
+            ly_gifts,
+            couples,
+            families,
+            manual_disallows,
+            manual_assigns,
+            gifts_per_person,
+            max_gifts_to_family,
+            max_gifts_from_family,
+            max_couple_overlap,
+            3,  # Set at natural boundary
+            seed,
+        )
+
+        # Should find a valid solution
+        assert gifts.value is not None
+
+        # Count intra-family gifts
+        family_gifts = 0
+        for family in families:
+            family_idx = [people.index(p) for p in family]
+            for i in family_idx:
+                for j in family_idx:
+                    if gifts.value[i, j] == 1:
+                        family_gifts += 1
+
+        assert family_gifts <= 3
+
+    def test_global_and_per_person_limits_interaction(self):
+        """Test that global and per-person limits work together correctly."""
+        people = ["Alice", "Bob", "Charlie", "Diana", "Eve", "Frank"]
+        ly_gifts = pd.DataFrame(columns=["giver", "gift1", "gift2"])
+        couples = []
+        families = [["Alice", "Bob"], ["Charlie", "Diana"], ["Eve", "Frank"]]
+        manual_disallows = {}
+        manual_assigns = {}
+        gifts_per_person = 1
+        max_gifts_to_family = 1  # Each person can give 1 to family
+        max_gifts_from_family = 1  # Each person can receive 1 from family
+        max_total_intra_family_gifts = 2  # But only 2 total across all families
+        max_couple_overlap = 1
+        seed = 999
 
         gifts = solve_optimization_problem(
             people,
@@ -205,10 +360,7 @@ class TestSolveOptimizationProblem:
             seed,
         )
 
-        # Verify the result exists
-        assert gifts.value is not None
-
-        # Count intra-family gifts in the solution
+        # Count intra-family gifts
         family_gifts = 0
         for family in families:
             family_idx = [people.index(p) for p in family]
@@ -217,8 +369,19 @@ class TestSolveOptimizationProblem:
                     if gifts.value[i, j] == 1:
                         family_gifts += 1
 
-        # Verify global constraint is satisfied
-        assert family_gifts <= max_total_intra_family_gifts
+        # Global limit should be the binding constraint
+        assert family_gifts <= 2, f"Expected <=2 intra-family gifts, got {family_gifts}"
+
+        # Verify per-person limits are also satisfied
+        for family in families:
+            family_idx = [people.index(p) for p in family if p in people]
+            for person_idx in family_idx:
+                # Gifts TO family
+                gifts_to_family = sum(gifts.value[person_idx, j] for j in family_idx)
+                assert gifts_to_family <= max_gifts_to_family
+                # Gifts FROM family
+                gifts_from_family = sum(gifts.value[i, person_idx] for i in family_idx)
+                assert gifts_from_family <= max_gifts_from_family
 
 
 class TestProcessResults:
