@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from src.algorithm_logical_exchange_xmas.run import load_config, validate_config
+from src.algorithm_logical_exchange_xmas.run import load_config, validate_config, validate_people_references
 
 
 class TestLoadConfig:
@@ -13,7 +13,6 @@ class TestLoadConfig:
 
         assert "seed" in config
         assert "algorithm" in config
-        assert "emails" in config
         assert config["seed"] == 123
 
     def test_load_config_file_not_found(self):
@@ -37,13 +36,6 @@ class TestValidateConfig:
         # Should not raise any exceptions
         validate_config(sample_config)
 
-    def test_validate_config_duplicate_eligible_people(self, sample_config):
-        """Test validation fails with duplicate eligible people."""
-        sample_config["algorithm"]["eligible_people"] = ["Alice", "Bob", "Alice"]
-
-        with pytest.raises(AssertionError, match="eligible people contains duplicates"):
-            validate_config(sample_config)
-
     def test_validate_config_duplicate_couples(self, sample_config):
         """Test validation fails with duplicate people in couples."""
         sample_config["algorithm"]["couples"] = [["Alice", "Bob"], ["Alice", "Charlie"]]
@@ -51,25 +43,11 @@ class TestValidateConfig:
         with pytest.raises(AssertionError, match="Couples contains duplicates"):
             validate_config(sample_config)
 
-    def test_validate_config_couples_not_eligible(self, sample_config):
-        """Test validation fails when couples contain ineligible people."""
-        sample_config["algorithm"]["couples"] = [["Alice", "Eve"]]  # Eve not in eligible_people
-
-        with pytest.raises(AssertionError):
-            validate_config(sample_config)
-
     def test_validate_config_duplicate_families(self, sample_config):
         """Test validation fails with duplicate people in families."""
         sample_config["algorithm"]["families"] = [["Alice", "Bob"], ["Bob", "Charlie"]]
 
         with pytest.raises(AssertionError, match="Families contains duplicates"):
-            validate_config(sample_config)
-
-    def test_validate_config_families_not_complete(self, sample_config):
-        """Test validation fails when not everyone is assigned a family."""
-        sample_config["algorithm"]["families"] = [["Alice", "Bob"]]  # Missing Charlie, Diana
-
-        with pytest.raises(AssertionError, match="Not everyone assigned a family"):
             validate_config(sample_config)
 
     def test_validate_config_negative_seed(self, sample_config):
@@ -95,7 +73,7 @@ class TestValidateConfig:
 
     def test_validate_config_missing_required_fields(self, sample_config):
         """Test validation fails when required fields are missing."""
-        del sample_config["algorithm"]["eligible_people"]
+        del sample_config["algorithm"]["couples"]
 
         with pytest.raises(KeyError):
             validate_config(sample_config)
@@ -132,3 +110,41 @@ class TestValidateConfig:
 
         with pytest.raises(AssertionError, match="must be an integer"):
             validate_config(sample_config)
+
+
+class TestValidatePeopleReferences:
+    def test_validate_people_references_success(self, sample_config):
+        """Test successful people references validation."""
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
+        couples = sample_config["algorithm"]["couples"]
+        families = sample_config["algorithm"]["families"]
+
+        # Should not raise any exceptions
+        validate_people_references(eligible_people, couples, families)
+
+    def test_validate_people_references_couples_not_eligible(self, sample_config):
+        """Test validation fails when couples contain ineligible people."""
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
+        couples = [["Alice", "Eve"]]  # Eve not in eligible_people
+        families = sample_config["algorithm"]["families"]
+
+        with pytest.raises(AssertionError, match="Couples contain people not in eligible_people"):
+            validate_people_references(eligible_people, couples, families)
+
+    def test_validate_people_references_families_not_complete(self, sample_config):
+        """Test validation fails when not everyone is assigned a family."""
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
+        couples = sample_config["algorithm"]["couples"]
+        families = [["Alice", "Bob"]]  # Missing Charlie, Diana
+
+        with pytest.raises(AssertionError, match="Not everyone assigned a family"):
+            validate_people_references(eligible_people, couples, families)
+
+    def test_validate_people_references_family_has_ineligible(self, sample_config):
+        """Test validation fails when family contains ineligible people."""
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
+        couples = sample_config["algorithm"]["couples"]
+        families = [["Alice", "Bob"], ["Charlie", "Diana", "Eve"]]  # Eve not in eligible_people
+
+        with pytest.raises(AssertionError, match="Not everyone assigned a family"):
+            validate_people_references(eligible_people, couples, families)

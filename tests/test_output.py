@@ -19,7 +19,12 @@ class TestGenerateOutput:
         )
 
         message_template = "Hello {giver}, give to {gift1} and {gift2}!"
-        emails = sample_config["emails"]
+        emails = {
+            "Alice": "alice@example.com",
+            "Bob": "bob@example.com",
+            "Charlie": "charlie@example.com",
+            "Diana": "diana@example.com",
+        }
         current_year = sample_config["current_year"]
 
         db_path = temp_output_dir / "secret_santa_db.csv"
@@ -54,7 +59,13 @@ class TestGenerateOutput:
         # Create initial database with previous year's data
         sample_ly_gifts.to_csv(db_path, index=False)
 
-        generate_output(result, "template", sample_config["emails"], current_year, messages_path, db_path)
+        emails = {
+            "Alice": "alice@example.com",
+            "Bob": "bob@example.com",
+            "Charlie": "charlie@example.com",
+            "Diana": "diana@example.com",
+        }
+        generate_output(result, "template", emails, current_year, messages_path, db_path)
 
         # Read back the database and verify content
         saved_db = pd.read_csv(db_path)
@@ -101,7 +112,13 @@ class TestGenerateOutput:
             }
         )
 
-        generate_output(result, "template", sample_config["emails"], current_year, messages_path, db_path)
+        emails = {
+            "Alice": "alice@example.com",
+            "Bob": "bob@example.com",
+            "Charlie": "charlie@example.com",
+            "Diana": "diana@example.com",
+        }
+        generate_output(result, "template", emails, current_year, messages_path, db_path)
 
         # Read back the database
         saved_db = pd.read_csv(db_path)
@@ -200,7 +217,13 @@ class TestGenerateOutput:
         # Create initial database
         sample_ly_gifts.to_csv(db_path, index=False)
 
-        generate_output(result, "Hi {giver}!", sample_config["emails"], current_year, messages_path, db_path)
+        emails = {
+            "Alice": "alice@example.com",
+            "Bob": "bob@example.com",
+            "Charlie": "charlie@example.com",
+            "Diana": "diana@example.com",
+        }
+        generate_output(result, "Hi {giver}!", emails, current_year, messages_path, db_path)
 
         with messages_path.open() as f:
             content = f.read()
@@ -208,7 +231,7 @@ class TestGenerateOutput:
         # Verify all people have sections
         for person in ["Alice", "Bob", "Charlie", "Diana"]:
             assert f"# {person}" in content
-            assert f"email: {sample_config['emails'][person]}" in content
+            assert f"email: {emails[person]}" in content
 
     def test_generate_output_missing_email(self, temp_output_dir, sample_ly_gifts):
         """Test that missing email addresses cause errors."""
@@ -261,7 +284,13 @@ class TestGenerateOutput:
         sample_ly_gifts.to_csv(db_path, index=False)
 
         # Call without specifying paths (use defaults)
-        generate_output(result, "Hello {giver}!", sample_config["emails"], current_year)
+        emails = {
+            "Alice": "alice@example.com",
+            "Bob": "bob@example.com",
+            "Charlie": "charlie@example.com",
+            "Diana": "diana@example.com",
+        }
+        generate_output(result, "Hello {giver}!", emails, current_year)
 
         # Verify default files were created/updated
         assert db_path.exists()

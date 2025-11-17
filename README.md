@@ -63,7 +63,6 @@ seed = 42  # Random seed for reproducibility
 current_year = 2025  # Year for which assignments are being generated
 
 [algorithm]
-eligible_people = ["Alice", "Bob", "Charlie", "Diana", "Eve", "Frank"]
 gifts_per_person = 2  # Number of gifts each person gives and receives
 
 # Define couples (they can't gift each other or the same people)
@@ -92,26 +91,41 @@ You're giving gifts to:
 2. {gift2}
 
 Happy Secret Santa!"""
-
-[emails]
-# Email addresses for each participant
-Alice = "alice@example.com"
-Bob = "bob@example.com"
-Charlie = "charlie@example.com"
-Diana = "diana@example.com"
-Eve = "eve@example.com"
-Frank = "frank@example.com"
-
-[manual_disallows]
-# Optional: Manually prevent specific gift assignments
-# Alice = ["Eve"]  # Alice cannot gift to Eve
 ```
+
+**Note:** Participant information (eligible people and emails) is now stored in `data/people.csv` instead of the config file (see Input Data section below).
 
 ## Input Data
 
-The algorithm requires two data sources:
+The algorithm requires the following data sources:
 
-### 1. Secret Santa Database (`data/secret_santa_db.csv`)
+### 1. People Database (`data/people.csv`)
+
+A CSV file containing all eligible participants and their email addresses. This serves as the single source of truth for who can participate in the Secret Santa exchange.
+
+```csv
+person,email
+Alice,alice@example.com
+Bob,bob@example.com
+Charlie,charlie@example.com
+Diana,
+Eve,eve@example.com
+Frank,frank@example.com
+```
+
+**Required columns:**
+
+- `person`: Participant name (must be unique)
+- `email`: Email address for the participant (can be blank for people without email)
+
+**Notes:**
+
+- All people listed in `couples` and `families` in the config must appear in this file
+- Email addresses are optional - leave the field blank if a person doesn't have an email
+- Blank or whitespace-only emails will be treated as missing (participant will appear in outputs but without an email address)
+- This file replaces the `eligible_people` list and `[emails]` section that were previously in `local_config.toml`
+
+### 2. Secret Santa Database (`data/secret_santa_db.csv`)
 
 A historical database containing gift assignments from all previous years. The algorithm queries this database for the previous year's data (based on `current_year - 1` from config) to prevent repeat assignments.
 
@@ -134,7 +148,7 @@ Frank,Diana,Alice,2024
 
 **Note:** The database is automatically updated with new assignments after running the algorithm. You can re-run the algorithm for the same year, and it will replace the existing entries for that year.
 
-### 2. Signups Database (`data/signups.csv`)
+### 3. Signups Database (`data/signups.csv`)
 
 A historical database containing signup information for all years. The algorithm queries this database for the current year's participants (based on `current_year` from config) to determine who is participating.
 
@@ -157,7 +171,7 @@ Frank,true,false,2025
 
 **Note:** Only participants with `is_secret_santa = true` for the current year will be included in the gift assignment algorithm. The `is_stockings` column is available for future features.
 
-### 3. Gift Preferences Database (`data/gift_preferences.csv`)
+### 4. Gift Preferences Database (`data/gift_preferences.csv`)
 
 A historical database containing gift preferences for all years. The algorithm queries this database for the current year's preferences to apply constraints on gift assignments.
 
@@ -207,12 +221,13 @@ python -m algorithm_logical_exchange_xmas.run
 The algorithm will:
 
 1. Load and validate configuration from `local_config.toml`
-2. Query the database for previous year's assignments (year = `current_year - 1`)
-3. Read this year's signup data (participants with `is_secret_santa = true`)
-4. Load this year's gift preferences (with `preference_type = 'disallow'`)
-5. Build and solve the optimization problem with all constraints
-6. Update the database with new assignments for `current_year`
-7. Generate personalized messages in `data/output/`
+2. Load eligible people and emails from `data/people.csv`
+3. Query the database for previous year's assignments (year = `current_year - 1`)
+4. Read this year's signup data (participants with `is_secret_santa = true`)
+5. Load this year's gift preferences (with `preference_type = 'disallow'` and `'assign'`)
+6. Build and solve the optimization problem with all constraints
+7. Update the database with new assignments for `current_year`
+8. Generate personalized messages in `data/output/`
 
 **Re-running the algorithm:** If you need to regenerate assignments for the same year (e.g., if constraints changed), simply run the algorithm again. It will automatically replace the existing entries for `current_year` in the database.
 
@@ -351,7 +366,10 @@ algorithm_logical_exchange_xmas/
 │   ├── test_optimization.py   # Optimization solver tests
 │   └── test_output.py         # Output generation tests
 ├── data/
-│   ├── input/                 # Input CSV files
+│   ├── people.csv             # Eligible participants and emails
+│   ├── secret_santa_db.csv    # Historical gift assignments
+│   ├── signups.csv            # Historical signup data
+│   ├── gift_preferences.csv   # Gift preferences database
 │   └── output/                # Generated assignments and messages
 ├── local_config.toml          # Configuration file (create this)
 ├── pyproject.toml             # Project configuration

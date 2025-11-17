@@ -12,14 +12,7 @@ def sample_config() -> dict[str, Any]:
     return {
         "seed": 123,
         "current_year": 2025,
-        "emails": {
-            "Alice": "alice@example.com",
-            "Bob": "bob@example.com",
-            "Charlie": "charlie@example.com",
-            "Diana": "diana@example.com",
-        },
         "algorithm": {
-            "eligible_people": ["Alice", "Bob", "Charlie", "Diana"],
             "couples": [["Alice", "Bob"], ["Charlie", "Diana"]],
             "families": [["Alice", "Bob"], ["Charlie", "Diana"]],
             "message": "Hello {giver}, give to {gift1} and {gift2}!",
@@ -30,6 +23,30 @@ def sample_config() -> dict[str, Any]:
             "max_couple_overlap": 1,
         },
     }
+
+
+@pytest.fixture
+def sample_people() -> pd.DataFrame:
+    """Sample people data with emails."""
+    return pd.DataFrame(
+        {
+            "person": ["Alice", "Bob", "Charlie", "Diana"],
+            "email": [
+                "alice@example.com",
+                "bob@example.com",
+                "charlie@example.com",
+                "diana@example.com",
+            ],
+        }
+    )
+
+
+@pytest.fixture
+def temp_people_file(sample_people):
+    """Create a temporary people CSV file for testing."""
+    people_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+    sample_people.to_csv(people_file.name, index=False)
+    return Path(people_file.name)
 
 
 @pytest.fixture
