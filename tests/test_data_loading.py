@@ -3,14 +3,14 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.algorithm_logical_exchange_xmas.run import load_data, load_gift_preferences
+from src.algorithm_logical_exchange_xmas.run import load_data, load_gift_preferences, load_people
 
 
 class TestLoadData:
     def test_load_data_success(self, temp_csv_files, sample_config):
         """Test successful data loading."""
         db_path, signups_db_path = temp_csv_files
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
 
         ly_gifts, people_signed_up = load_data(eligible_people, current_year, signups_db_path, db_path)
@@ -30,7 +30,7 @@ class TestLoadData:
     def test_load_data_db_file_not_found(self, temp_csv_files, sample_config):
         """Test error handling when gift database file doesn't exist."""
         _, signups_db_path = temp_csv_files
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
 
         with pytest.raises(Exception):  # DuckDB will raise IOException  # noqa: B017, PT011
@@ -39,7 +39,7 @@ class TestLoadData:
     def test_load_data_signups_file_not_found(self, temp_csv_files, sample_config):
         """Test error handling when signups database file doesn't exist."""
         db_path, _ = temp_csv_files
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
 
         with pytest.raises(Exception):  # DuckDB will raise IOException  # noqa: B017, PT011
@@ -48,7 +48,7 @@ class TestLoadData:
     def test_load_data_duplicate_ly_giver(self, temp_csv_files, sample_config):
         """Test validation fails with duplicate givers in last year's data."""
         db_path, signups_db_path = temp_csv_files
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
 
         # Create invalid database with duplicate giver
@@ -68,7 +68,7 @@ class TestLoadData:
     def test_load_data_ineligible_ly_giver(self, temp_csv_files, sample_config):
         """Test validation fails with ineligible giver in last year's data."""
         db_path, signups_db_path = temp_csv_files
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
 
         # Create invalid database with ineligible giver
@@ -88,7 +88,7 @@ class TestLoadData:
     def test_load_data_ineligible_signup(self, temp_csv_files, sample_config):
         """Test validation fails with ineligible person in signup data."""
         db_path, signups_db_path = temp_csv_files
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
 
         # Create invalid signup database with ineligible person
@@ -108,7 +108,7 @@ class TestLoadData:
     def test_load_data_duplicate_signup(self, temp_csv_files, sample_config):
         """Test validation fails with duplicate person in signup data."""
         db_path, signups_db_path = temp_csv_files
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
 
         # Create invalid signup database with duplicate person
@@ -128,7 +128,7 @@ class TestLoadData:
     def test_load_data_filters_non_participants(self, temp_csv_files, sample_config):
         """Test that only people with is_secret_santa=True are included."""
         db_path, signups_db_path = temp_csv_files
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
 
         # Create signup database with mixed participation
@@ -153,7 +153,7 @@ class TestLoadData:
 class TestLoadGiftPreferences:
     def test_load_gift_preferences_success(self, temp_gift_preferences_file, sample_config):
         """Test successful gift preferences loading with mixed types."""
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
         gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
 
@@ -177,7 +177,7 @@ class TestLoadGiftPreferences:
 
     def test_load_gift_preferences_file_not_found(self, sample_config):
         """Test that missing file returns empty dicts."""
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
         gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
 
@@ -191,7 +191,7 @@ class TestLoadGiftPreferences:
 
     def test_load_gift_preferences_no_current_year_data(self, sample_config):
         """Test that no data for current year returns empty dicts."""
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
         current_year = 2030  # Year with no data
 
@@ -219,7 +219,7 @@ class TestLoadGiftPreferences:
 
     def test_load_gift_preferences_ineligible_person(self, sample_config):
         """Test validation fails with ineligible person in preferences."""
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
         gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
 
@@ -242,7 +242,7 @@ class TestLoadGiftPreferences:
 
     def test_load_gift_preferences_ineligible_gift(self, sample_config):
         """Test validation fails with ineligible gift recipient in preferences."""
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
         gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
 
@@ -265,7 +265,7 @@ class TestLoadGiftPreferences:
 
     def test_load_gift_preferences_duplicate_pairs(self, sample_config):
         """Test validation fails with duplicate person-gift pairs."""
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
         gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
 
@@ -288,7 +288,7 @@ class TestLoadGiftPreferences:
 
     def test_load_gift_preferences_multiple_disallows(self, sample_config):
         """Test that one person can have multiple disallowed recipients."""
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
         gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
 
@@ -318,7 +318,7 @@ class TestLoadGiftPreferences:
 
     def test_load_gift_preferences_conflict_detection(self, sample_config):
         """Test that conflicts between disallow and assign are detected."""
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
         gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
 
@@ -341,7 +341,7 @@ class TestLoadGiftPreferences:
 
     def test_load_gift_preferences_over_constraint(self, sample_config):
         """Test that over-constraint is detected (more assigns than gifts_per_person)."""
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
         gifts_per_person = 2  # Only 2 gifts per person
 
@@ -364,7 +364,7 @@ class TestLoadGiftPreferences:
 
     def test_load_gift_preferences_assign_only(self, sample_config):
         """Test loading assign preferences only."""
-        eligible_people = sample_config["algorithm"]["eligible_people"]
+        eligible_people = ["Alice", "Bob", "Charlie", "Diana"]
         current_year = sample_config["current_year"]
         gifts_per_person = sample_config["algorithm"]["gifts_per_person"]
 
@@ -392,3 +392,113 @@ class TestLoadGiftPreferences:
         assert "Bob" in assigns
         assert "Charlie" in assigns["Alice"]
         assert "Diana" in assigns["Bob"]
+
+
+class TestLoadPeople:
+    def test_load_people_success(self, temp_people_file):
+        """Test successful people loading with all emails."""
+        eligible_people, emails = load_people(temp_people_file)
+
+        # Verify eligible people list
+        assert isinstance(eligible_people, list)
+        assert len(eligible_people) == 4
+        assert set(eligible_people) == {"Alice", "Bob", "Charlie", "Diana"}
+
+        # Verify emails dict
+        assert isinstance(emails, dict)
+        assert len(emails) == 4
+        assert emails["Alice"] == "alice@example.com"
+        assert emails["Bob"] == "bob@example.com"
+        assert emails["Charlie"] == "charlie@example.com"
+        assert emails["Diana"] == "diana@example.com"
+
+    def test_load_people_with_missing_emails(self):
+        """Test successful loading with some missing emails."""
+        import tempfile
+
+        # Create people data with some blank emails
+        people_data = pd.DataFrame(
+            {
+                "person": ["Alice", "Bob", "Charlie", "Diana"],
+                "email": ["alice@example.com", "", "charlie@example.com", ""],
+            }
+        )
+        people_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+        people_data.to_csv(people_file.name, index=False)
+
+        eligible_people, emails = load_people(Path(people_file.name))
+
+        # All people should be in eligible list
+        assert len(eligible_people) == 4
+        assert set(eligible_people) == {"Alice", "Bob", "Charlie", "Diana"}
+
+        # Only people with emails should be in emails dict
+        assert len(emails) == 2
+        assert "Alice" in emails
+        assert "Charlie" in emails
+        assert "Bob" not in emails
+        assert "Diana" not in emails
+
+    def test_load_people_file_not_found(self):
+        """Test error handling when people file doesn't exist."""
+        with pytest.raises(FileNotFoundError, match="People file not found"):
+            load_people(Path("nonexistent_people.csv"))
+
+    def test_load_people_duplicate_names(self):
+        """Test validation fails with duplicate person names."""
+        import tempfile
+
+        # Create invalid people data with duplicate names
+        invalid_people = pd.DataFrame(
+            {
+                "person": ["Alice", "Bob", "Alice"],  # Alice appears twice
+                "email": [
+                    "alice1@example.com",
+                    "bob@example.com",
+                    "alice2@example.com",
+                ],
+            }
+        )
+        people_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+        invalid_people.to_csv(people_file.name, index=False)
+
+        with pytest.raises(AssertionError, match="duplicate person names"):
+            load_people(Path(people_file.name))
+
+    def test_load_people_empty_file(self):
+        """Test handling of empty CSV file."""
+        import tempfile
+
+        # Create empty CSV with just headers
+        empty_people = pd.DataFrame({"person": [], "email": []})
+        people_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+        empty_people.to_csv(people_file.name, index=False)
+
+        eligible_people, emails = load_people(Path(people_file.name))
+
+        # Should return empty list and dict
+        assert eligible_people == []
+        assert emails == {}
+
+    def test_load_people_whitespace_only_email(self):
+        """Test that whitespace-only emails are treated as missing."""
+        import tempfile
+
+        # Create people data with whitespace-only email
+        people_data = pd.DataFrame(
+            {
+                "person": ["Alice", "Bob"],
+                "email": ["alice@example.com", "   "],  # Bob has whitespace-only email
+            }
+        )
+        people_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False)
+        people_data.to_csv(people_file.name, index=False)
+
+        eligible_people, emails = load_people(Path(people_file.name))
+
+        # Bob should be in eligible_people but not in emails
+        assert len(eligible_people) == 2
+        assert "Bob" in eligible_people
+        assert len(emails) == 1
+        assert "Alice" in emails
+        assert "Bob" not in emails

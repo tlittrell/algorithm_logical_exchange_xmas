@@ -13,7 +13,6 @@ class TestLoadConfig:
 
         assert "seed" in config
         assert "algorithm" in config
-        assert "emails" in config
         assert config["seed"] == 123
 
     def test_load_config_file_not_found(self):
@@ -37,13 +36,6 @@ class TestValidateConfig:
         # Should not raise any exceptions
         validate_config(sample_config)
 
-    def test_validate_config_duplicate_eligible_people(self, sample_config):
-        """Test validation fails with duplicate eligible people."""
-        sample_config["algorithm"]["eligible_people"] = ["Alice", "Bob", "Alice"]
-
-        with pytest.raises(AssertionError, match="eligible people contains duplicates"):
-            validate_config(sample_config)
-
     def test_validate_config_duplicate_couples(self, sample_config):
         """Test validation fails with duplicate people in couples."""
         sample_config["algorithm"]["couples"] = [["Alice", "Bob"], ["Alice", "Charlie"]]
@@ -51,25 +43,11 @@ class TestValidateConfig:
         with pytest.raises(AssertionError, match="Couples contains duplicates"):
             validate_config(sample_config)
 
-    def test_validate_config_couples_not_eligible(self, sample_config):
-        """Test validation fails when couples contain ineligible people."""
-        sample_config["algorithm"]["couples"] = [["Alice", "Eve"]]  # Eve not in eligible_people
-
-        with pytest.raises(AssertionError):
-            validate_config(sample_config)
-
     def test_validate_config_duplicate_families(self, sample_config):
         """Test validation fails with duplicate people in families."""
         sample_config["algorithm"]["families"] = [["Alice", "Bob"], ["Bob", "Charlie"]]
 
         with pytest.raises(AssertionError, match="Families contains duplicates"):
-            validate_config(sample_config)
-
-    def test_validate_config_families_not_complete(self, sample_config):
-        """Test validation fails when not everyone is assigned a family."""
-        sample_config["algorithm"]["families"] = [["Alice", "Bob"]]  # Missing Charlie, Diana
-
-        with pytest.raises(AssertionError, match="Not everyone assigned a family"):
             validate_config(sample_config)
 
     def test_validate_config_negative_seed(self, sample_config):
@@ -95,7 +73,7 @@ class TestValidateConfig:
 
     def test_validate_config_missing_required_fields(self, sample_config):
         """Test validation fails when required fields are missing."""
-        del sample_config["algorithm"]["eligible_people"]
+        del sample_config["algorithm"]["couples"]
 
         with pytest.raises(KeyError):
             validate_config(sample_config)

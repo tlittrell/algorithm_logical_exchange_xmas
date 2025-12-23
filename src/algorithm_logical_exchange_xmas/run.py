@@ -67,18 +67,77 @@ def load_config(config_path: Path = Path("local_config.toml")) -> dict[str, Any]
         return tomllib.load(file)
 
 
+def load_people(people_path: Path = Path("data/people.csv")) -> tuple[list[str], dict[str, str]]:
+    """Load people and their email addresses from CSV file.
+
+    Reads a CSV file containing person names and email addresses, returning both
+    the list of eligible people and a dictionary mapping names to emails.
+
+    Args:
+        people_path: Path to the CSV file containing people data.
+            Must have columns: person, email
+
+    Returns:
+        Tuple of (eligible_people, emails) where:
+            - eligible_people: List of all person names
+            - emails: Dict mapping person names to email addresses (only for people with emails)
+
+    Raises:
+        FileNotFoundError: If the people CSV file doesn't exist.
+        AssertionError: If there are duplicate people in the file.
+
+    Example:
+        >>> eligible_people, emails = load_people(Path("data/people.csv"))
+        >>> print(eligible_people)
+        ['Alice', 'Bob', 'Charlie']
+        >>> print(emails)
+        {'Alice': 'alice@example.com', 'Bob': 'bob@example.com'}
+    """
+    if not people_path.exists():
+        msg = f"People file not found: {people_path}"
+        raise FileNotFoundError(msg)
+
+    # Read people data from CSV
+    people_df = duckdb.sql(
+        """
+        SELECT person, email
+        FROM read_csv_auto(?)
+        """,
+        params=[str(people_path)],
+    ).df()
+
+    # Validate no duplicate people
+    assert people_df["person"].is_unique, "People file contains duplicate person names"
+
+    # Extract eligible people list
+    eligible_people = people_df["person"].tolist()
+
+    # Extract emails dict (only for people with non-empty emails)
+    emails = {}
+    for _, row in people_df.iterrows():
+        person = row["person"]
+        email = row["email"]
+        # Only add to emails dict if email is not empty/null
+        if pd.notna(email) and email.strip():
+            emails[person] = email
+
+    return eligible_people, emails
+
+
 def validate_config(config: dict[str, Any]) -> None:
     """Validate configuration data for consistency and completeness.
 
     Performs comprehensive validation checks on the configuration to ensure:
-    - No duplicate entries in eligible people, couples, or families
-    - All people in couples/families are in the eligible people list
-    - Every eligible person is assigned to exactly one family
+    - No duplicate entries in couples or families
     - Seed is a non-negative integer
+    - Algorithm parameters are valid
+
+    Note: Validation of people data (eligible_people, emails) is performed separately
+    in load_people(). Cross-validation between people and couples/families is done
+    in validate_people_references().
 
     Args:
-        config: Configuration dictionary loaded from TOML file, containing
-            "algorithm" (with eligible_people, couples, families) and "seed" keys.
+        config: Configuration dictionary loaded from TOML file.
 
     Returns:
         None. Validation is performed via assertions.
@@ -90,23 +149,17 @@ def validate_config(config: dict[str, Any]) -> None:
     logging.info("Validating config")
 
     algorithm_config = config["algorithm"]
-    eligible_people = algorithm_config["eligible_people"]
     couples = algorithm_config["couples"]
     families = algorithm_config["families"]
     seed = config["seed"]
 
-    # Validate eligible people
-    assert len(set(eligible_people)) == len(eligible_people), "eligible people contains duplicates"
-
-    # Validate couples
+    # Validate couples - no duplicates
     people_in_couples = list(itertools.chain(*couples))
     assert len(set(people_in_couples)) == len(people_in_couples), "Couples contains duplicates"
-    assert set(people_in_couples).issubset(set(eligible_people))
 
-    # Validate families
+    # Validate families - no duplicates
     people_in_families = list(itertools.chain(*families))
     assert len(set(people_in_families)) == len(people_in_families), "Families contains duplicates"
-    assert set(people_in_families) == set(eligible_people), "Not everyone assigned a family"
 
     # Validate seed
     assert seed >= 0
@@ -117,6 +170,33 @@ def validate_config(config: dict[str, Any]) -> None:
         max_total = algorithm_config["max_total_intra_family_gifts"]
         assert isinstance(max_total, int), "max_total_intra_family_gifts must be an integer"
         assert max_total >= 0, "max_total_intra_family_gifts must be non-negative"
+
+
+def validate_people_references(
+    eligible_people: list[str],
+    couples: list[list[str]],
+    families: list[list[str]],
+) -> None:
+    """Validate that couples and families reference valid people.
+
+    Ensures that all people mentioned in couples and families exist in the
+    eligible_people list, and that all eligible people are assigned to a family.
+
+    Args:
+        eligible_people: List of all eligible participant names.
+        couples: List of couple pairs.
+        families: List of family groups.
+
+    Raises:
+        AssertionError: If validation fails.
+    """
+    # Validate couples reference eligible people
+    people_in_couples = list(itertools.chain(*couples))
+    assert set(people_in_couples).issubset(set(eligible_people)), "Couples contain people not in eligible_people list"
+
+    # Validate families reference eligible people and everyone is assigned
+    people_in_families = list(itertools.chain(*families))
+    assert set(people_in_families) == set(eligible_people), "Not everyone assigned a family"
 
 
 def load_data(
@@ -861,17 +941,21 @@ def main() -> None:
     config = load_config()
     validate_config(config)
 
+    # Load people and emails from CSV
+    eligible_people, emails = load_people()
+
     # Extract config values
     seed = config["seed"]
     current_year = config["current_year"]
-    emails = config["emails"]
 
     # Algorithm configuration
     algorithm_config = config["algorithm"]
     couples = algorithm_config["couples"]
     families = algorithm_config["families"]
-    eligible_people = algorithm_config["eligible_people"]
     message_template = algorithm_config["message"]
+
+    # Validate that couples and families reference valid people
+    validate_people_references(eligible_people, couples, families)
     gifts_per_person = algorithm_config["gifts_per_person"]
     max_gifts_to_family = algorithm_config["max_gifts_to_family"]
     max_gifts_from_family = algorithm_config["max_gifts_from_family"]
