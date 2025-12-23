@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from src.algorithm_logical_exchange_xmas.run import load_config, validate_config, validate_people_references
+from src.algorithm_logical_exchange_xmas.run import load_config, validate_config
 
 
 class TestLoadConfig:
